@@ -49,6 +49,6 @@ po/*~
 rsconnect/
 
 # Symbolic links
-data/
-plots/
-tables/
+/data
+/plots
+/tables
