@@ -2,11 +2,12 @@ library(dplyr)
 library(stringr)
 library(Seurat)
 library(monocle3)
-library(gt)
-library(Matrix)
-library(scds)
+# library(gt)
+# library(Matrix)
+# library(scds)
 library(DoubletFinder)
 library(scCustomize)
+library(data.table)
 
 
 DetermineDimensionality <- function(object){
@@ -399,22 +400,26 @@ seurat_analysis <- function(object){
   pk <- bcmvn[which.max(bcmvn$BCmetric), "pK"] %>% droplevels() %>% levels %>% as.numeric()
   nExp <- round(0.075*nrow(seu.obj@meta.data))
   seu.obj <- doubletFinder_v3(seu.obj, PCs = dims, pK = pk, nExp = nExp)
+  
+  
   return(seu.obj)
 }
 
 seu <- lapply(seurat.obj, seurat_analysis)
-# 
-# seu.obj <- Merge_Seurat_List(seurat.obj, add.cell.ids = names(seurat.obj))
-# 
-# new_names <-
-#   colnames(seu.obj) %>% 
-#   str_c(str_extract(., "^[:alpha:]+_[:alnum:]+") , sep = "_") %>% 
-#   str_remove("^[:alpha:]+_[:alnum:]+_")
-# 
-# seu.obj <- RenameCells(seu.obj, new.names = new_names)
-# 
-# seu.obj <- NormalizeData(seu.obj)
+seu <- lapply(seu, function(x){
+  colnames(x@meta.data)[grepl("DF.class", colnames(x@meta.data))] <- "doublet_classification"
+  colnames(x@meta.data)[grepl("pANN", colnames(x@meta.data))] <- "pANN"
+  return(x)
+})
 
+seu.obj <- Merge_Seurat_List(seu, add.cell.ids = names(seu))
+
+new_names <-
+  colnames(seu.obj) %>%
+  str_c(str_extract(., "^[:alpha:]+_[:alnum:]+") , sep = "_") %>%
+  str_remove("^[:alpha:]+_[:alnum:]+_")
+
+seu.obj <- RenameCells(seu.obj, new.names = new_names)
 
 monocle.raw.list <- list()
 seurat.obj <- list()
@@ -570,6 +575,16 @@ saveRDS(monocle.raw, file.path(dataDir, "scRNAseq_1_monocle_raw.cds"))
 # additional.meta <- monocle.obj@colData %>% subset(sample != "fLN_40B3", c(treatment55, hash55))
 # saveRDS(additional.meta, file.path(dataDir,"additional_meta.RDS"))
 
+
+monocle.obj <- new_cell_data_set(expression_data = seu.obj@assays$RNA@counts, 
+                                 cell_metadata = seu.obj@meta.data)
+rowData(monocle.obj)$gene_short_name <- row.names(rowData(monocle.obj))
+
+doublet_LUT <- monocle.obj@colData[, "doublet_classification", drop = F]
+doublet_LUT <- as.data.table(doublet_LUT, keep.rownames = T) 
+
+saveRDS(doublet_LUT, file.path(dataDir, "doublet_LUT.rds"))
+#"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"
 
 # Process dataset
 monocle.obj <-
