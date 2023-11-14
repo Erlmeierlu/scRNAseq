@@ -364,22 +364,45 @@ for (experimentx in names(pbmc_list)){
 
 seurat.obj <- list()
 # pbmc_subset <- pbmc_list
-monocle.obj.list <- list()
+# monocle.obj.list <- list()
 for (experimentx in names(pbmc_subset)) {
     for (sx in names(pbmc_subset[[experimentx]])) {
         seurat.obj[[sx]] <- pbmc_subset[[experimentx]][[sx]]
-        mat.use <- seurat.obj[[sx]]@assays$RNA@counts
-        monocle.obj.list[[sx]] <-
-        new_cell_data_set(expression_data = mat.use,
-        cell_metadata = seurat.obj[[sx]]@meta.data)
+        # mat.use <- seurat.obj[[sx]]@assays$RNA@counts
+        # monocle.obj.list[[sx]] <-
+        # new_cell_data_set(expression_data = mat.use,
+        # cell_metadata = seurat.obj[[sx]]@meta.data)
     }
 }
-monocle.obj <- combine_cds(cds_list = monocle.obj.list, cell_names_unique = FALSE)
-rowData(monocle.obj)$gene_short_name <- row.names(rowData(monocle.obj))
+# monocle.obj <- combine_cds(cds_list = monocle.obj.list, cell_names_unique = FALSE)
+# rowData(monocle.obj)$gene_short_name <- row.names(rowData(monocle.obj))
 
 
+seurat_analysis <- function(object){
+  #Standard Workflow
+  seu.obj <- object
+  seu.obj <- NormalizeData(seu.obj)
+  seu.obj <- FindVariableFeatures(seu.obj)
+  seu.obj <- ScaleData(seu.obj, vars.to.regress = c("Phase"))
+  seu.obj <- RunPCA(seu.obj)
+  
+  #Determine Dimensionality + Unsup Ana
+  dims <- seq(1, DetermineDimensionality(seu.obj))
+  seu.obj <- FindNeighbors(seu.obj, dims = dims)
+  seu.obj <- FindClusters(seu.obj)
+  seu.obj <- RunUMAP(seu.obj, dims = dims)
 
+  #Doublet Identification
+  sweep.list <- paramSweep_v3(seu.obj, PCs = dims, sct = FALSE)
+  sweep.stats <- summarizeSweep(sweep.list, GT = FALSE)
+  bcmvn <- find.pK(sweep.stats)
+  pk <- bcmvn[which.max(bcmvn$BCmetric), "pK"] %>% droplevels() %>% levels %>% as.numeric()
+  nExp <- round(0.075*nrow(seu.obj@meta.data))
+  seu.obj <- doubletFinder_v3(seu.obj, PCs = dims, pK = pk, nExp = nExp)
+  return(seu.obj)
+}
 
+seu <- lapply(seurat.obj, seurat_analysis)
 # 
 # seu.obj <- Merge_Seurat_List(seurat.obj, add.cell.ids = names(seurat.obj))
 # 
@@ -391,23 +414,7 @@ rowData(monocle.obj)$gene_short_name <- row.names(rowData(monocle.obj))
 # seu.obj <- RenameCells(seu.obj, new.names = new_names)
 # 
 # seu.obj <- NormalizeData(seu.obj)
-# seu.obj <- FindVariableFeatures(seu.obj)
-# seu.obj <- ScaleData(seu.obj, vars.to.regress = c("sample", "Phase"))
-# seu.obj <- RunPCA(seu.obj)
-# 
-# dims <- seq(1, DetermineDimensionality(seu.obj))
-# seu.obj <- FindNeighbors(seu.obj, dims = dims)
-# seu.obj <- FindClusters(seu.obj)
-# seu.obj <- RunUMAP(seu.obj, dims = dims)
-# 
-# #Doublet Identification
-# sweep.list <- paramSweep_v3(seu.obj, PCs = dims, sct = FALSE)
-# sweep.stats <- summarizeSweep(sweep.list, GT = FALSE)
-# bcmvn <- find.pK(sweep.stats)
-# pk <- bcmvn[which.max(bcmvn$BCmetric), "pK"] %>% droplevels() %>% levels %>% as.numeric()
-# nExp <- round(0.05*nrow(seu.obj@meta.data))
-# 
-# seu.obj <- doubletFinder_v3(seu.obj, PCs = dims, pK = pk, nExp = nExp)
+
 
 monocle.raw.list <- list()
 seurat.obj <- list()
