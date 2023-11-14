@@ -332,8 +332,8 @@ saveRDS(monocle.raw, file.path(dataDir, "scRNAseq_0_monocle_raw.cds"))
 
 # Load Data ---------------------------------------------------------------
 #remove comment when needed
-# monocle.obj <- readRDS(file.path(dataDir, "scRNAseq_0_souped.cds"))
-# monocle.raw <- readRDS(file.path(dataDir, "scRNAseq_0_monocle_raw.cds"))
+monocle.obj <- readRDS(file.path(dataDir, "scRNAseq_0_souped.cds"))
+monocle.raw <- readRDS(file.path(dataDir, "scRNAseq_0_monocle_raw.cds"))
 
 # SoupX -------------------------------------------------------------------
 sc <- SoupChannel(counts(monocle.raw), 

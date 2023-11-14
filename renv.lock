@@ -239,18 +239,6 @@
       "RemoteSha": "d35b9ca2e877a6fc55dde6ad7c9ccfc0b35624d9",
       "Hash": "ae1a83cc57c4f1c70d792671a5b213ff"
     },
-    "Matrix.utils": {
-      "Package": "Matrix.utils",
-      "Version": "0.9.7",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteHost": "api.github.com",
-      "RemoteUsername": "cvarrichio",
-      "RemoteRepo": "Matrix.utils",
-      "RemoteRef": "master",
-      "RemoteSha": "14c2462076f2542fac877075e9b8dbb47d7eeb2a",
-      "Hash": "1e50cda35f8367ec881087df6f9b7318"
-    },
     "MatrixGenerics": {
       "Package": "MatrixGenerics",
       "Version": "1.2.1",
@@ -466,13 +454,6 @@
       "Source": "Bioconductor",
       "Hash": "2da24c5f66521d18cff602d324834b20"
     },
-    "V8": {
-      "Package": "V8",
-      "Version": "3.4.2",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Hash": "b181d4eb2904da0897a742a559964173"
-    },
     "XML": {
       "Package": "XML",
       "Version": "3.99-0.6",
@@ -532,18 +513,6 @@
       "Source": "Repository",
       "Repository": "RSPM",
       "Hash": "948eec6f0829595595df50bbe435f863"
-    },
-    "bigD": {
-      "Package": "bigD",
-      "Version": "0.2.0.9000",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteUsername": "rich-iannone",
-      "RemoteRepo": "bigD",
-      "RemoteRef": "main",
-      "RemoteSha": "8fba5c6a0b69b910d2d9aba1a1edfa315fd9522f",
-      "RemoteHost": "api.github.com",
-      "Hash": "cb152dd594bfb7f737cd5b7f0502475f"
     },
     "biomaRt": {
       "Package": "biomaRt",
@@ -1013,18 +982,6 @@
       "Repository": "RSPM",
       "Hash": "9d028e8f37c84dba356ce3c367a1978e"
     },
-    "ggsignif": {
-      "Package": "ggsignif",
-      "Version": "0.6.4.9000",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteUsername": "const-ae",
-      "RemoteRepo": "ggsignif",
-      "RemoteRef": "main",
-      "RemoteSha": "080e11924bec22de19057ae64231353bdd033cd9",
-      "RemoteHost": "api.github.com",
-      "Hash": "e14a82288912810a09b1317bb600b8b3"
-    },
     "globals": {
       "Package": "globals",
       "Version": "0.16.2-9001",
@@ -1078,18 +1035,6 @@
       "Source": "Repository",
       "Repository": "RSPM",
       "Hash": "195f3206842ea5ae11968e8d462bb828"
-    },
-    "gt": {
-      "Package": "gt",
-      "Version": "0.9.0.9000",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteUsername": "rstudio",
-      "RemoteRepo": "gt",
-      "RemoteRef": "master",
-      "RemoteSha": "3f0b5406ee3f0d19e08f73bad90e7d34633d7e19",
-      "RemoteHost": "api.github.com",
-      "Hash": "a27f5cc542feb057e8747887afe8d0f4"
     },
     "gtable": {
       "Package": "gtable",
@@ -1213,18 +1158,6 @@
       "Source": "Repository",
       "Repository": "RSPM",
       "Hash": "98138e0994d41508c7a6b84a0600cfcb"
-    },
-    "juicyjuice": {
-      "Package": "juicyjuice",
-      "Version": "0.1.0.9000",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteUsername": "rich-iannone",
-      "RemoteRepo": "juicyjuice",
-      "RemoteRef": "main",
-      "RemoteSha": "9f6ca5514217da02368d743533f2c1ebfedbe8d9",
-      "RemoteHost": "api.github.com",
-      "Hash": "7b548947c49596e44be7272fe59c5c73"
     },
     "labeling": {
       "Package": "labeling",
@@ -1351,13 +1284,6 @@
       "Source": "Repository",
       "Repository": "RSPM",
       "Hash": "392212982257ea03c37b63547dc871b4"
-    },
-    "markdown": {
-      "Package": "markdown",
-      "Version": "1.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "61e4a10781dd00d7d81dd06ca9b94e95"
     },
     "matrixStats": {
       "Package": "matrixStats",
@@ -1629,20 +1555,6 @@
       "Source": "Repository",
       "Repository": "RSPM",
       "Hash": "1d6398dd08391629b5438f9de172f038"
-    },
-    "reactR": {
-      "Package": "reactR",
-      "Version": "0.4.4",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Hash": "75389c8091eb14ee21c6bc87a88b3809"
-    },
-    "reactable": {
-      "Package": "reactable",
-      "Version": "0.2.3",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Hash": "ac1afe50d1c77470a72971a07fd146b1"
     },
     "readr": {
       "Package": "readr",
@@ -2174,13 +2086,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "4b25e70111b7d644322e9513f403a272"
-    },
-    "xfun": {
-      "Package": "xfun",
-      "Version": "0.23",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Hash": "791a57f43c887111490851dcd166d344"
     },
     "xml2": {
       "Package": "xml2",
