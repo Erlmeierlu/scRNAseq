@@ -28,69 +28,46 @@ fileDirs <- lapply(fileDirs, function(x) {
 
 
 # Load Raw Data -----------------------------------------------------------
-
-#Seurat Object
-pbmc_data_list <- list()
-pbmc_list <- list()
-ab_list <- list()
-
-for (file in fileDirs[["filtered"]]) {
+load_data <- function(dat, 
+                      path, 
+                      slot = c("0" = NULL, 
+                               "1" = 'Gene Expression', 
+                               "2" = 'Antibody Capture')){
     
-    x <- file %>% str_remove("_trans.*")
-    
-    experiment <- case_when(!grepl("[0-9]+B[0-9]", x) ~ "HDAC1",
-                            grepl("40", x) ~ "HDAC1",
-                            TRUE ~ "HDAC2")
-    
-    pbmc_data_list[[experiment]][[x]] <- Read10X(file.path(rawDir, file))
-    
-    pbmc_list[[experiment]][[x]] <-
-        CreateSeuratObject(
-            counts = pbmc_data_list[[experiment]][[x]]$'Gene Expression',
-            project = "scRNAseq",
-            min.cells = 0,
-            min.features = 0
-        )
-    
-    ab_list[[experiment]][[x]] <- CreateSeuratObject(
-        counts = pbmc_data_list[[experiment]][[x]]$'Antibody Capture',
+    data <- Read10X(file.path(path, dat))
+    if(slot != "0") data <- data[[as.numeric(slot)]]
+    obj <- CreateSeuratObject(
+        counts = data,
         project = "scRNAseq",
         min.cells = 0,
         min.features = 0
     )
+    x <- dat %>% str_extract("^[:alpha:]+_[:alnum:]+")
+    return(setNames(list(obj), x))
 }
 
-pbmc_data_list_raw <- list()
-pbmc_list_raw <- list()
-for (file in fileDirs[["raw"]]) {
-    x <- file %>% str_remove("_trans.*")
-    
-    experiment <- case_when(!grepl("[0-9]+B[0-9]", x) ~ "HDAC1",
-                            grepl("40", x) ~ "HDAC1",
-                            TRUE ~ "HDAC2")
-    
-    pbmc_data_list_raw[[experiment]][[x]] <-
-        Read10X(file.path(rawDir, file))
-    
-    pbmc_list_raw[[experiment]][[x]] <-
-        CreateSeuratObject(
-            counts = pbmc_data_list_raw[[experiment]][[x]]$'Gene Expression',
-            project = "scRNAseq",
-            min.cells = 0,
-            min.features = 0
-        )
-}
+pbmc_list <- sapply(fileDirs$filtered, 
+                    load_data,
+                    path = rawDir, 
+                    slot = "1", 
+                    USE.NAMES = FALSE)
 
-CountsAB <- list()
-#creating list of AB counts
-for (experiment in names(ab_list)){
-    CountsAB[[experiment]] <- lapply(ab_list[[experiment]], GetAssayData, slot = "counts")
-}
+ab_list <- sapply(fileDirs$filtered, 
+                  load_data,
+                  path = rawDir, 
+                  slot = "2", 
+                  USE.NAMES = FALSE)
 
-#removal of bad sample
-CountsAB <- lapply(CountsAB, function(x) {
-    x[!grepl("fLN_40B3", names(x))]
-})
+
+pbmc_list_raw <- sapply(fileDirs$raw, 
+                        load_data,
+                        path = rawDir, 
+                        slot = "1", 
+                        USE.NAMES = FALSE)
+
+
+#Create AB counts list
+CountsAB <- lapply(ab_list, GetAssayData, slot = "counts")
 
 saveRDS(CountsAB, file.path(dataDir, "ab_counts.rds"))
 
@@ -188,45 +165,36 @@ AssignMetadata <- function(object, abcounts){
 }
 
 #Assign meta
-for (experimentx in unique(names(pbmc_list))){
-    pbmc_list[[experimentx]] <- mapply(AssignMetadata, pbmc_list[[experimentx]], CountsAB[[experimentx]])
-}
+pbmc_list <- mapply(AssignMetadata, pbmc_list, CountsAB)
+
 #Determine %mito genes
-for (experimentx in names(pbmc_list)){
-    for(sample in names(pbmc_list[[experimentx]])){
-        pbmc_list[[experimentx]][[sample]]$percent.mt <- PercentageFeatureSet(pbmc_list[[experimentx]][[sample]], pattern = "^mt-")
-    }
-}
+pbmc_list <- lapply(pbmc_list, function(x) {
+    x$percent.mt <- PercentageFeatureSet(x, pattern = "^mt-")
+    return(x)
+})
+
 #cell cycle scoring
-for (experimentx in unique(names(pbmc_list))){
-    for(sx in names(pbmc_list[[experimentx]])){
-        
-        pbmc_list[[experimentx]][[sx]]$sample <- sx 
-        pbmc_list[[experimentx]][[sx]] <- NormalizeData(pbmc_list[[experimentx]][[sx]], verbose = TRUE)
-        pbmc_list[[experimentx]][[sx]] <- CellCycleScoring(pbmc_list[[experimentx]][[sx]], 
-                                                           s.features = str_to_title(cc.genes$s.genes), 
-                                                           g2m.features = str_to_title(cc.genes$g2m.genes), set.ident = TRUE)
-    }
-}
+pbmc_list <- sapply(seq_along(pbmc_list), function(x, y, i) {
+    obj <- x[[i]]
+    obj$sample <- y[[i]]
+    obj <- NormalizeData(obj, verbose = T)
+    obj <- CellCycleScoring(
+        obj,
+        s.features = str_to_title(cc.genes$s.genes),
+        g2m.features = str_to_title(cc.genes$g2m.genes),
+        set.ident = TRUE
+    )
+    return(setNames(list(obj), y[[i]]))
+}, x = pbmc_list, y = names(pbmc_list), USE.NAMES = F)
+
 
 #exclude barcodes with less than 50 UMIs for soupx analysis
-pbmc_list <- pbmc_list[c("HDAC1","HDAC2")]
-pbmc_subset <- list()
-for (experimentx in names(pbmc_list)){
-    pbmc_subset[[experimentx]] <-
-        lapply(pbmc_list[[experimentx]],
-               subset,
-               subset = nFeature_RNA > 50
-        )
-}
 
-#unlist
-seu <- list()
-for (experimentx in names(pbmc_subset)) {
-    for (sx in names(pbmc_subset[[experimentx]])) {
-        seu[[sx]] <- pbmc_subset[[experimentx]][[sx]]
-    }
-}
+pbmc_subset <-
+    lapply(pbmc_list,
+           subset,
+           subset = nFeature_RNA > 50)
+
 
 seurat_analysis <- function(object){
     
@@ -263,7 +231,7 @@ seurat_analysis <- function(object){
     return(seu.obj)
 }
 
-seu <- lapply(seu, seurat_analysis)
+seu <- lapply(pbmc_subset, seurat_analysis)
 seu <- lapply(seu, function(x){
     colnames(x@meta.data)[grepl("DF.class", colnames(x@meta.data))] <- "doublet_classification"
     colnames(x@meta.data)[grepl("pANN", colnames(x@meta.data))] <- "pANN"
@@ -278,7 +246,6 @@ new_names <-
     str_remove("^[:alpha:]+_[:alnum:]+_")
 
 seu <- RenameCells(seu, new.names = new_names)
-
 
 # Create Monocle Objects --------------------------------------------------
 #Create monocle object from seurat object
@@ -314,26 +281,26 @@ monocle.obj <-  cluster_cells(monocle.obj)
 #assign metadata column
 monocle.obj@colData$Cluster <- unname(clusters(monocle.obj[,rownames(colData(monocle.obj))]))
 
+saveRDS(monocle.obj, file.path(dataDir, "0_souped.cds"))
+
 #Raw reads as monocle object
-monocle.raw.list <- list()
-for (experimentx in names(pbmc_list_raw)) {
-    for (sx in names(pbmc_list_raw[[experimentx]])) {
-        mat.use <- pbmc_list_raw[[experimentx]][[sx]]@assays$RNA@counts
-        monocle.raw.list[[sx]] <-
-            new_cell_data_set(expression_data = mat.use,
-                              cell_metadata = pbmc_list_raw[[experimentx]][[sx]]@meta.data)
-    }
-}
+monocle.raw.list <- lapply(pbmc_list_raw, function(x){
+    mat <- x@assays$RNA@counts
+    cds <- new_cell_data_set(expression_data = mat,
+                             cell_metadata = x@meta.data)
+    return(cds)
+    
+})
 
 monocle.raw <- combine_cds(cds_list = monocle.raw.list, cell_names_unique = FALSE)
 rowData(monocle.raw)$gene_short_name <- row.names(rowData(monocle.raw))
 
-saveRDS(monocle.raw, file.path(dataDir, "scRNAseq_0_monocle_raw.cds"))
+saveRDS(monocle.raw, file.path(dataDir, "0_monocle_raw.cds"))
 
 # Load Data ---------------------------------------------------------------
 #remove comment when needed
-monocle.obj <- readRDS(file.path(dataDir, "scRNAseq_0_souped.cds"))
-monocle.raw <- readRDS(file.path(dataDir, "scRNAseq_0_monocle_raw.cds"))
+monocle.obj <- readRDS(file.path(dataDir, "0_souped.cds"))
+monocle.raw <- readRDS(file.path(dataDir, "0_monocle_raw.cds"))
 
 # SoupX -------------------------------------------------------------------
 sc <- SoupChannel(counts(monocle.raw), 
@@ -343,9 +310,12 @@ sc <- setClusters(sc, setNames(monocle.obj@colData$Cluster, rownames(monocle.obj
 sc <- autoEstCont(sc)
 out <- adjustCounts(sc)
 
-doParallel::registerDoParallel(cores=7)
+doParallel::registerDoParallel(cores=8)
 foreach(sx = unique(monocle.obj@colData$sample)) %dopar% {
 x <- out[,grepl(sx, colnames(out))]
-DropletUtils:::write10xCounts(file.path(dataDir, paste0("/countsSoupX/", sx)), x = x, type = "sparse", version = "3")
+DropletUtils:::write10xCounts(file.path(dataDir, paste0("/countsSoupX/", sx)), 
+                              x = x, 
+                              type = "sparse", 
+                              version = "3")
 }
 

@@ -2,37 +2,44 @@ library(dplyr)
 library(stringr)
 library(monocle3)
 library(Seurat)
+library(data.table)
 
 #setting up directories
 baseDir <- getwd()
-plotsDir <- file.path(baseDir, "plots/")
-tablesDir <- file.path(baseDir, "tables/")
-dataDir <- file.path(baseDir, "data/")
+vDir <- ("/vscratch/scRNAseq")
+plotsDir <- file.path(vDir, "plots")
+tablesDir <- file.path(vDir, "tables")
+dataDir <- file.path(vDir, "data")
+resDir <- file.path(baseDir, "results")
 
 # Create Data ---------------------------------------------------------------
 
 #directories to loop over
 fileDirs <- list.files(file.path(dataDir, "countsSoupX"))
 
-#Seurat Object
-pbmc_data_list <- list()
-pbmc_list <- list()
-
-for(file in fileDirs){
-    experiment <- case_when(!grepl("[0-9]+B[0-9]", file) ~ "HDAC1",
-                            grepl("40", file) ~ "HDAC1",
-                            TRUE ~ "HDAC2")
+load_data <- function(dat, 
+                      path, 
+                      slot = c("0" = NULL, 
+                               "1" = 'Gene Expression', 
+                               "2" = 'Antibody Capture')){
     
-    pbmc_data_list[[experiment]][[file]] <- Read10X(file.path(dataDir, "countsSoupX", file))
-    
-    pbmc_list[[experiment]][[file]] <-
-        CreateSeuratObject(
-            counts = pbmc_data_list[[experiment]][[file]],
-            project = "scRNAseq",
-            min.cells = 0,
-            min.features = 0
-        )
+    data <- Read10X(file.path(path, dat))
+    if(slot != "0") data <- data[[as.numeric(slot)]]
+    obj <- CreateSeuratObject(
+        counts = data,
+        project = "scRNAseq",
+        min.cells = 0,
+        min.features = 0
+    )
+    x <- dat %>% str_extract("^[:alpha:]+_[:alnum:]+")
+    return(setNames(list(obj), x))
 }
+
+pbmc_list <- sapply(fileDirs, 
+                    load_data,
+                    path = file.path(dataDir, "countsSoupX"), 
+                    slot = "0", 
+                    USE.NAMES = FALSE)
 
 CountsAB <- readRDS(file.path(dataDir, "ab_counts.rds"))
 
@@ -129,54 +136,54 @@ AssignMetadata <- function(object, abcounts){
     return(object)
 }
 
-for (experimentx in unique(names(pbmc_list))){
-    pbmc_list[[experimentx]] <- mapply(AssignMetadata, pbmc_list[[experimentx]], CountsAB[[experimentx]])
-}
-for (experimentx in names(pbmc_list)){
-    for(sample in names(pbmc_list[[experimentx]])){
-        pbmc_list[[experimentx]][[sample]]$percent.mt <- PercentageFeatureSet(pbmc_list[[experimentx]][[sample]], pattern = "^mt-")
-    }
-}
+#Assign meta
+pbmc_list <- mapply(AssignMetadata, pbmc_list, CountsAB)
 
-# CELL CYCLE
-for (experimentx in unique(names(pbmc_list))){
-    for(sx in names(pbmc_list[[experimentx]])){
-        # add sample name to metadata 
-        pbmc_list[[experimentx]][[sx]]$sample <- sx 
-        # Cell cycle scoring (will be added to metadata)
-        pbmc_list[[experimentx]][[sx]] <- NormalizeData(pbmc_list[[experimentx]][[sx]], verbose = TRUE)
-        pbmc_list[[experimentx]][[sx]] <- CellCycleScoring(pbmc_list[[experimentx]][[sx]], 
-                                                           s.features = str_to_title(cc.genes$s.genes), 
-                                                           g2m.features = str_to_title(cc.genes$g2m.genes), set.ident = TRUE)
-    }
-}
+#Determine %mito genes
+pbmc_list <- lapply(pbmc_list, function(x) {
+    x$percent.mt <- PercentageFeatureSet(x, pattern = "^mt-")
+    return(x)
+})
 
-pbmc_list <- pbmc_list[c("HDAC1","HDAC2")]
-pbmc_subset <- list()
+#cell cycle scoring
+pbmc_list <- sapply(seq_along(pbmc_list), function(x, y, i) {
+    obj <- x[[i]]
+    obj$sample <- y[[i]]
+    obj <- NormalizeData(obj, verbose = T)
+    obj <- CellCycleScoring(
+        obj,
+        s.features = str_to_title(cc.genes$s.genes),
+        g2m.features = str_to_title(cc.genes$g2m.genes),
+        set.ident = TRUE
+    )
+    return(setNames(list(obj), y[[i]]))
+}, x = pbmc_list, y = names(pbmc_list), USE.NAMES = F)
 
-#Filtering
-for (experimentx in names(pbmc_list)){
-    pbmc_subset[[experimentx]] <-
-        lapply(pbmc_list[[experimentx]],
-               subset,
-               subset = nFeature_RNA > 200 &
-                   percent.mt < 10 & hash.sum > 10)
-}
+#LookupTable for empty droplets
+LUT <- readRDS(file.path(dataDir, "doublet_LUT.rds"))
 
-#Create Monocle Ob
-monocle.obj.list <- list()
-seurat.obj <- list()
-for (experimentx in names(pbmc_subset)) {
-    for (sx in names(pbmc_subset[[experimentx]])) {
-        seurat.obj[[sx]] <- pbmc_subset[[experimentx]][[sx]]
-        mat.use <- seurat.obj[[sx]]@assays$RNA@counts
-        monocle.obj.list[[sx]] <-
-            new_cell_data_set(expression_data = mat.use,
-                              cell_metadata = seurat.obj[[sx]]@meta.data)
-    }
-}
-monocle.obj <- combine_cds(cds_list = monocle.obj.list, cell_names_unique = TRUE)
+setDT(LUT)
+#filter dead cells; droplets;...
+pbmc_subset <-
+    lapply(pbmc_list,
+           function(x) {
+               obj <- x[,!colnames(x) %in% LUT[doublet_classification == "Doublet", rn]]
+               subset(obj,
+                      subset = nFeature_RNA > 200 &
+                          percent.mt < 10 &
+                          hash.sum > 10)
+           })
 
+#Create Monocle Obj
+monocle.list <- lapply(pbmc_list, function(x){
+    mat <- x@assays$RNA@counts
+    cds <- new_cell_data_set(expression_data = mat,
+                             cell_metadata = x@meta.data)
+    return(cds)
+})
+
+monocle.obj <- combine_cds(cds_list = monocle.list, cell_names_unique = TRUE)
+rowData(monocle.obj)$gene_short_name <- row.names(rowData(monocle.obj))
 
 # Metadata refinement
 monocle.obj@colData$hash <- as.factor(monocle.obj@colData$hash)
@@ -238,14 +245,6 @@ monocle.obj@colData$experiment <-
         TRUE ~ "HDAC2"
     ))
 
-rowData(monocle.obj)$gene_short_name <- row.names(rowData(monocle.obj))
-
-
-#remove bad sample
-monocle.obj <- monocle.obj[, !grepl("fLN_40B3", colnames(monocle.obj))]
-monocle.obj@colData <- droplevels(monocle.obj@colData)
-
-nrow(colData(monocle.obj)) == ncol(monocle.obj)
 
 #save data
-saveRDS(monocle.obj, file.path(dataDir, "scRNAseq_0_souped.cds"))
+saveRDS(monocle.obj, file.path(dataDir, "1_qc.cds"))
