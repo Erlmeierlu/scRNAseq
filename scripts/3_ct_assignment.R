@@ -176,7 +176,7 @@ for (ref in names(ref_data)){
            read.csv(file.path(tablesDir, paste0("cell_types_", ref, "_", labelx, ".csv"))))
     
     assign(paste0("orig_cell_types_", ref, "_", labelx), 
-           readRDS(file.path(dataDir, paste0("orig_cell_types_", ref, "_", labelx, ".rds"))))
+           readRDS(file.path(vDir, "data", paste0("orig_cell_types_", ref, "_", labelx, ".rds"))))
     
   }
   
@@ -247,7 +247,7 @@ freq_list <- freq_list %>%
   unite("ct_cluster", c(Cluster, celltype_raw)) %>% 
   mutate(ct_cluster = fct_inorder(ct_cluster))
 
-saveRDS(freq_list, file.path(dataDir,"all_labels_ref_based_for_HM.rds"))
+saveRDS(freq_list, file.path(vDir, "data", "all_labels_ref_based_for_HM.rds"))
 
 # plot a heatmap
 freq_list %>% 
@@ -270,7 +270,7 @@ freq_list %>%
     space = "free"
   )
 
-ggsave(file.path(plotsDir, "all_labels_HM.pdf"), height = 13, width = 17)
+ggsave(file.path(plotsDir, "all_labels_HM.pdf"), height = 13, width = 25)
 
 
 # Save Object -------------------------------------------------------------
@@ -278,4 +278,4 @@ monocle.obj@colData$ct_cluster <-
   factor(monocle.obj@colData$ct_cluster,
          levels = levels(freq_list$ct_cluster))
 
-saveRDS(monocle.obj, file.path(dataDir, "scRNAseq_2_monocle.cds"))
+write_rds(monocle.obj, file.path(dataDir, "3_annotated_monocle.cds"))
