@@ -5,26 +5,29 @@ library(Seurat)
 library(data.table)
 
 #setting up directories
-baseDir <- getwd()
 vDir <- ("/vscratch/scRNAseq")
 plotsDir <- file.path(vDir, "plots")
 tablesDir <- file.path(vDir, "tables")
-dataDir <- file.path(vDir, "data")
-resDir <- file.path(baseDir, "results")
+oldDir <- file.path(vDir, "data/old")
+dataDir <-("data")
+resDir <- ("results")
 
 # Create Data ---------------------------------------------------------------
 
 #directories to loop over
-fileDirs <- list.files(file.path(dataDir, "countsSoupX"))
+fileDirs <- list.files(file.path(vDir, "data/countsSoupX"))
 
 load_data <- function(dat, 
                       path, 
-                      slot = c("0" = NULL, 
-                               "1" = 'Gene Expression', 
-                               "2" = 'Antibody Capture')){
-    
+                      slot = c("none", "gene expression", "antibody capture")){
     data <- Read10X(file.path(path, dat))
-    if(slot != "0") data <- data[[as.numeric(slot)]]
+    
+    slot <- match.arg(slot)
+    if (slot == "gene expression")
+        data <- data[[1]]
+    else if (slot == "antibody capture")
+        data <- data[[2]]
+    
     obj <- CreateSeuratObject(
         counts = data,
         project = "scRNAseq",
@@ -32,121 +35,112 @@ load_data <- function(dat,
         min.features = 0
     )
     x <- dat %>% str_extract("^[:alpha:]+_[:alnum:]+")
-    return(setNames(list(obj), x))
+    
+    setNames(list(obj), x)
 }
 
-pbmc_list <- sapply(fileDirs, 
+data_list <- sapply(fileDirs, 
                     load_data,
-                    path = file.path(dataDir, "countsSoupX"), 
-                    slot = "0", 
+                    path = file.path(dataDir, "countsSoupX"),
                     USE.NAMES = FALSE)
 
-CountsAB <- readRDS(file.path(dataDir, "ab_counts.rds"))
+CountsAB <- read_rds(file.path(dataDir, "ab_counts.rds"))
 
 
 # Assign Metadata ---------------------------------------------------------
 
-AssignMetadata <- function(object, abcounts){
-    sx <- object
-    barcodes <- row.names(sx@meta.data) %>% str_extract("[:alpha:]+\\-\\d")
-    ab <- abcounts[,barcodes]
-    ab.hash <- ab[grepl("-[0-9]+$", row.names(ab)),]
+AssignMetadata <- function(sx, abcounts) {
     
+    barcodes <- row.names(sx@meta.data) %>% str_extract("[:alpha:]+\\-\\d")
+    abcounts <- abcounts[, colnames(abcounts) %in% barcodes]
+    stopifnot(all(barcodes == colnames(abcounts)))
+    
+    ab.hash <- abcounts[grepl("-[0-9]+$", row.names(abcounts)), ]
     ab.aggr <-
-        t(matrix(
-            data = c(colSums(ab.hash[1:3,]), colSums(ab.hash[4:6,]), colSums(ab.hash[7:9,])) ,
-            ncol = 3,
-            dimnames = list(
-                colnames(ab.hash),
-                ifelse(
-                    !grepl("\\-[0-9]\\-", rownames(ab.hash)),
-                    case_when(
-                        grepl("30[1-3]", rownames(ab.hash)) ~ paste0(rownames(ab.hash), "-1"),
-                        grepl("30[4-6]", rownames(ab.hash)) ~ paste0(rownames(ab.hash), "-2"),
-                        grepl("30[7-9]", rownames(ab.hash)) ~ paste0(rownames(ab.hash), "-3")
-                    ) %>% str_remove("\\-30[0-9]"),
-                    rownames(ab.hash) %>% str_remove("\\-30[0-9]")
-                ) %>% unique()
-            )
-        ))
-    ab.aggr <- as(ab.aggr, "sparseMatrix")
+        list(
+            "HTO-fLN-40B2-1" = 1:3,
+            "HTO-fLN-40B2-2" = 4:6,
+            "HTO-fLN-40B2-3" = 7:9
+        ) %>%
+        sapply(function(x)
+            colSums(ab.hash[x, ])) %>%
+        t() %>%
+        as("sparseMatrix")
     
     stopifnot(colSums(ab.aggr) == colSums(ab.hash))
     
-    ab.cd4 <- ab[grepl("CD[1-9]$", row.names(ab)),]
-    ab.cd45 <- ab[grepl("CD45.*$", row.names(ab)),]
+    ab.cd4 <- abcounts[grepl("CD[1-9]$", row.names(abcounts)), ]
+    ab.cd45 <- abcounts[grepl("CD45.*$", row.names(abcounts)), ]
     
-    if(any(grepl("GD", rownames(ab)))){
-        ab.gd <- ab[grepl("GD", rownames(ab)),]
-        gd.counts <- ab.gd
-        ab.gdcd4 <- ab[grepl("GD|CD4$", rownames(ab)),]
+    if (any(grepl("GD", rownames(abcounts)))) {
+        ab.gd <- abcounts[grepl("GD", rownames(abcounts)), ]
+        ab.gdcd4 <- abcounts[grepl("GD|CD4$", rownames(abcounts)), ]
     } else {
         ab.gd <- NULL
-        gd.counts <- NULL
         ab.gdcd4 <- NULL
     }
     
-    idx.aggr <- apply(t(t(as.matrix(ab.aggr))/colSums(ab.aggr)), 2, function(col) which(col > 0.6))
-    idx.hash <- apply(t(t(as.matrix(ab.hash))/colSums(ab.hash)), 2, function(col) which(col > 0.6))
-    idx.cd4 <- apply(t(t(as.matrix(ab.cd4))/colSums(ab.cd4)), 2, function(col) which(col > 0.75))
-    idx.cd45 <- apply(t(t(as.matrix(ab.cd45))/colSums(ab.cd45)), 2, function(col) which(col > 0.6))
-    if(!is.null(ab.gd)){
-        idx.gdcd4 <- apply(t(t(as.matrix(ab.gdcd4))/colSums(ab.gdcd4)), 2, function(col) which(col > 0.75))
-    } else {
-        idx.gdcd4 <- NULL
+    assign_ab <- function(ab, threshold) {
+        ratio <- t(t(as.matrix(ab)) / colSums(ab))
+        #which ab fulfills the threshold criteria in each cell?
+        apply(ratio, 2, function(col) {
+            id <- which(col > threshold)
+            if (length(id) == 0)
+                return("Undefined")
+            names(id)
+        })
     }
     
-    
-    stopifnot(all(colnames(ab.aggr) == row.names(sx@meta.data) %>% str_extract("[:alpha:]+\\-\\d")))
-    stopifnot(all(colnames(ab.hash) == row.names(sx@meta.data) %>% str_extract("[:alpha:]+\\-\\d")))
-    
-    aggr <- lapply(idx.aggr, function(i) row.names(ab.aggr)[i])
-    aggr[sapply(aggr, length) == 0] <- "Undefined"
-    
-    hash <- lapply(idx.hash, function(i) row.names(ab.hash)[i])
-    hash[sapply(hash, length) == 0] <- "Undefined"
-    
-    cd4cd8 <- lapply(idx.cd4, function(i) row.names(ab.cd4)[i])
-    cd4cd8[sapply(idx.cd4, length) == 0] <- "Undefined"
-    
-    cd45x <- lapply(idx.cd45, function(i) row.names(ab.cd45)[i])
-    cd45x[sapply(idx.cd45, length) == 0] <- "Undefined"
-    
-    if(!is.null(ab.gd)){
-        gdcd4 <- lapply(idx.gdcd4, function(i) row.names(ab.gdcd4)[i])
-        gdcd4[sapply(idx.gdcd4, length) == 0] <- "Undefined"
-    }else {
+    aggr <- assign_ab(ab.aggr, 0.6)
+    hash <- assign_ab(ab.hash, 0.6)
+    cd4cd8 <- assign_ab(ab.cd4, 0.75)
+    cd45x <- assign_ab(ab.cd45, 0.6)
+    if (!is.null(ab.gd)) {
+        gdcd4 <- assign_ab(ab.gdcd4, 0.75)
+    } else {
         gdcd4 <- NULL
     }
     
-    sx@meta.data$hash <- unlist(hash)
-    if(!is.null(ab.gd)) sx@meta.data$gdcd4 <- unlist(gdcd4)
-    if(!is.null(ab.gd)) sx@meta.data$gd.ratio <- ab.gdcd4["HTO-GD.TCR",]/colSums(ab.gdcd4)
-    sx@meta.data$hash.agg <- unlist(aggr)
-    sx@meta.data$cd4cd8 <- unlist(cd4cd8)
-    sx@meta.data$cd45x <- unlist(cd45x)
-    sx@meta.data$hash.sum <- colSums(ab.hash)
-    sx@meta.data$hash.ratio <- colMaxs(as.matrix(ab.hash))/colSums(ab.hash)
-    sx@meta.data$hash.agg.ratio <- colMaxs(as.matrix(ab.aggr))/colSums(ab.aggr)
-    sx@meta.data$CD45 <- ab['HTO-CD45.1',]/(ab['HTO-CD45.1',] + ab['HTO-CD45.2',])
-    sx@meta.data$CD45.sum <- ab['HTO-CD45.1',] + ab['HTO-CD45.2',]
-    sx@meta.data$CD4 <- ab['HTO-CD4',]/(ab['HTO-CD4',] + ab['HTO-CD8',])
-    sx@meta.data$CD4.sum <- ab['HTO-CD4',] + ab['HTO-CD8',]
-    object <- sx
-    return(object)
+    max_ratio <- function(x) {
+        colMaxs(as.matrix(x)) / colSums(x)
+    }
+    
+    sx@meta.data <- sx@meta.data %>%
+        mutate(
+            hash,
+            aggr,
+            cd4cd8,
+            cd45x,
+            gdcd4 = if (!is.null(ab.gd)) {
+                gdcd4
+            } else
+                NA,
+            gd.ratio = if (!is.null(ab.gd)) {
+                ab.gdcd4["HTO-GD.TCR",] / colSums(ab.gdcd4)
+            } else
+                NA,
+            hash.sum = colSums(ab.hash),
+            hash.ratio = max_ratio(ab.hash),
+            hash.agg.ratio = max_ratio(ab.aggr),
+            CD45 = ab.cd45["HTO-CD45.1",] / colSums(ab.cd45),
+            CD45.sum = colSums(ab.cd45),
+            CD4 = ab.cd4['HTO-CD4',] / colSums(ab.cd4),
+            CD4.sum = colSums(ab.cd4)
+        )
+    sx
 }
 
 #Assign meta
-pbmc_list <- mapply(AssignMetadata, pbmc_list, CountsAB)
+data_list <- mapply(AssignMetadata, data_list, CountsAB)
 
 #Determine %mito genes
-pbmc_list <- lapply(pbmc_list, function(x) {
+data_list <- lapply(data_list, function(x) {
     x$percent.mt <- PercentageFeatureSet(x, pattern = "^mt-")
-    return(x)
+    x
 })
 
 #cell cycle scoring
-pbmc_list <- sapply(seq_along(pbmc_list), function(x, y, i) {
+data_list <- sapply(seq_along(data_list), function(x, y, i) {
     obj <- x[[i]]
     obj$sample <- y[[i]]
     obj <- NormalizeData(obj, verbose = T)
@@ -156,16 +150,16 @@ pbmc_list <- sapply(seq_along(pbmc_list), function(x, y, i) {
         g2m.features = str_to_title(cc.genes$g2m.genes),
         set.ident = TRUE
     )
-    return(setNames(list(obj), y[[i]]))
-}, x = pbmc_list, y = names(pbmc_list), USE.NAMES = F)
+    setNames(list(obj), y[[i]])
+}, x = data_list, y = names(data_list), USE.NAMES = F)
 
 #LookupTable for empty droplets
-LUT <- readRDS(file.path(dataDir, "doublet_LUT.rds"))
+LUT <- readr::read_rds(file.path(dataDir, "doublet_LUT.rds"))
 
 setDT(LUT)
 #filter dead cells; droplets;...
-pbmc_subset <-
-    lapply(pbmc_list,
+data_subset <-
+    lapply(data_list,
            function(x) {
                obj <- x[,!colnames(x) %in% LUT[doublet_classification == "Doublet", rn]]
                subset(obj,
@@ -175,11 +169,11 @@ pbmc_subset <-
            })
 
 #Create Monocle Obj
-monocle.list <- lapply(pbmc_list, function(x){
+monocle.list <- lapply(data_subset, function(x){
     mat <- x@assays$RNA@counts
     cds <- new_cell_data_set(expression_data = mat,
                              cell_metadata = x@meta.data)
-    return(cds)
+    cds
 })
 
 monocle.obj <- combine_cds(cds_list = monocle.list, cell_names_unique = TRUE)
@@ -187,7 +181,7 @@ rowData(monocle.obj)$gene_short_name <- row.names(rowData(monocle.obj))
 
 # Metadata refinement
 monocle.obj@colData$hash <- as.factor(monocle.obj@colData$hash)
-monocle.obj@colData$hash.agg <- as.factor(monocle.obj@colData$hash.agg)
+monocle.obj@colData$aggr <- as.factor(monocle.obj@colData$aggr)
 monocle.obj@colData$gdcd4 <- as.factor(monocle.obj@colData$gdcd4)
 monocle.obj@colData$cd4cd8 <- as.factor(monocle.obj@colData$cd4cd8)
 monocle.obj@colData$cd45x <- as.factor(monocle.obj@colData$cd45x)
@@ -209,9 +203,9 @@ monocle.obj@colData$treatment <-
     ))
 monocle.obj@colData$treatment.agg <-
     as.factor(case_when(
-        grepl("\\-3$", monocle.obj@colData$hash.agg) ~ "NoT",
-        grepl("\\-1$", monocle.obj@colData$hash.agg) ~ "HDAC_WT",
-        grepl("\\-2$", monocle.obj@colData$hash.agg) ~ "HDAC_cKO",
+        grepl("\\-3$", monocle.obj@colData$aggr) ~ "NoT",
+        grepl("\\-1$", monocle.obj@colData$aggr) ~ "HDAC_WT",
+        grepl("\\-2$", monocle.obj@colData$aggr) ~ "HDAC_cKO",
         TRUE ~ "Undefined"
     ))
 monocle.obj@colData$hashid <-
@@ -222,9 +216,9 @@ monocle.obj@colData$hashid <-
     ))
 monocle.obj@colData$hashid.agg <-
     as.factor(ifelse(
-        monocle.obj@colData$hash.agg == "Undefined",
+        monocle.obj@colData$aggr == "Undefined",
         "Undefined",
-        str_extract(monocle.obj@colData$hash.agg, "[0-9]+$")
+        str_extract(monocle.obj@colData$aggr, "[0-9]+$")
     ))
 monocle.obj@colData$sex <- as.factor(str_to_upper(str_extract(monocle.obj@colData$sample,"^[A-z]")))
 monocle.obj@colData$treatment <-
@@ -247,4 +241,5 @@ monocle.obj@colData$experiment <-
 
 
 #save data
-saveRDS(monocle.obj, file.path(dataDir, "1_qc.cds"))
+write_rds(monocle.obj, file.path(dataDir, "1_qc.cds"))
+

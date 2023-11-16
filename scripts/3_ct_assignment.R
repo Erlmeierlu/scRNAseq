@@ -14,9 +14,8 @@ library(data.table)
 library(readr)
 library(forcats)
 library(scran)
+library(readr)
 
-#set seed for good luck
-set.seed(42)
 #personal theme
 theme_my <- function() {
   
@@ -40,22 +39,23 @@ theme_my <- function() {
 }
 
 #setting up directories
-baseDir <- getwd()
-rawDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/raw_data/scRNA_from_BSF/COUNT")
-plotsDir <- file.path(baseDir, "plots/")
-tablesDir <- file.path(baseDir, "tables/")
-dataDir <- file.path(baseDir, "data/")
+vDir <- ("/vscratch/scRNAseq")
+plotsDir <- file.path(vDir, "plots")
+tablesDir <- file.path(vDir, "tables")
+oldDir <- file.path(vDir, "data/old")
+dataDir <-("data")
+resDir <- ("results")
 
 # Load Data ---------------------------------------------------------------
 
-monocle.obj <- readRDS(file.path(dataDir, "/scRNAseq_1_monocle.cds"))
+monocle.obj <- read_rds(file.path(dataDir, "2_unsupervised.cds"))
 
-reference.obj <- readRDS(file.path(dataDir, "TwoGroups_celltypes_group.rds"))
+reference.obj <- readRDS(file.path(oldDir, "TwoGroups_celltypes_group.rds"))
 reference.obj <- UpdateSeuratObject(object = reference.obj)
 reference.obj <- as.SingleCellExperiment(reference.obj)
 colnames(colData(reference.obj))[colnames(colData(reference.obj)) == "celltype"] <- "label.fine"
 
-old.mon <- readRDS(file.path(dataDir, "old/scRNAseq_3_monocle_more_hash_cutoff.cds"))
+old.mon <- readRDS(file.path(oldDir, "scRNAseq_3_monocle_more_hash_cutoff.cds"))
 old_meta <- as.data.frame(colData(old.mon))
 old_counts <- assay(old.mon)
 old.seurat <- CreateSeuratObject(counts = old_counts,
@@ -66,36 +66,27 @@ old.mon <-  as.SingleCellExperiment(old.seurat)
 
 colnames(colData(old.mon))[colnames(colData(old.mon)) == "celltype"] <- "label.fine"
 
-# Cleaning Metadata -------------------------------------------------------
-
-# colnames(monocle.obj) <- colnames(monocle.obj) %>% str_remove("_[:alpha:]+_[:alnum:]+$")
-stopifnot(rownames(colData(monocle.obj)) == rownames(colData(old.mon[,colnames(old.mon) %in% colnames(monocle.obj)])))
-
-
-monocle.obj@colData$celltype_old <- str_replace_all(old.mon[,colnames(old.mon) %in% colnames(monocle.obj)]@colData$label.fine, " |\\-", "_")
-monocle.obj@colData$Cluster_old <- colData(old.mon[,colnames(old.mon) %in% colnames(monocle.obj)])$Cluster
-# SingleR annotation ------------------------------------------------------
+  # SingleR annotation ------------------------------------------------------
 
 ## Reference data ----------------------------------------------------------
 
 ### making a list of reference data sets  ----------------------------------------------
 
 ref_data <- list(
-  
   #Human Data Sets: 
   ##HPCA generally / Keratinocytes
   # hpca = HumanPrimaryCellAtlasData(),
   # 
-  # ##DB ImmuneCells, comprehensive CD4+ subsets; only one B cell subset, no dendritic cells
-  # dice = DatabaseImmuneCellExpressionData(),
+  ##DB ImmuneCells, comprehensive CD4+ subsets; only one B cell subset, no dendritic cells
+  dice = DatabaseImmuneCellExpressionData(),
   # 
   # ##Monaco Immunc cells
   # monaco = MonacoImmuneData(),
-  # 
-  # #MouseData:
-  # ##MouseRNAseqData
-  # mrsd = MouseRNAseqData(),
-  # 
+
+  #MouseData:
+  ##MouseRNAseqData
+  mrsd = MouseRNAseqData(),
+  
   ##ImmGen 
   immgen = ImmGenData(),
   
@@ -106,16 +97,11 @@ ref_data <- list(
   old = old.mon
 )
 
-
-
 #Human Gene names as Mouse Gene names
-
 # rownames(ref_data$hpca) <- str_to_title(rownames(ref_data$hpca))
-# rownames(ref_data$dice) <- str_to_title(rownames(ref_data$dice))
+rownames(ref_data$dice) <- str_to_title(rownames(ref_data$dice))
 # rownames(ref_data$monaco) <- str_to_title(rownames(ref_data$monaco))
 
-
-#
 metadata <- as.data.frame(colData(monocle.obj))
 
 counts_matrix <- assay(monocle.obj)
@@ -155,7 +141,7 @@ foreach(ref = names(ref_data)) %dopar% {
     )
     
     # save results
-    saveRDS(results, file.path(dataDir, ref.file.orig))
+    write_rds(results, file.path(vDir, "data", ref.file.orig))
     
     res <- data.table(
       as_tibble(results, rownames = "cell"),

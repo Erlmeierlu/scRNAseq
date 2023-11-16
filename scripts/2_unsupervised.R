@@ -1,20 +1,19 @@
 library(monocle3)
 library(magrittr)
+library(readr)
 
 #setting up directories
-baseDir <- getwd()
-plotsDir <- file.path(baseDir, "plots/")
-tablesDir <- file.path(baseDir, "tables/")
-dataDir <- file.path(baseDir, "data/")
-
-#seeeed
-set.seed(42)
+vDir <- ("/vscratch/scRNAseq")
+plotsDir <- file.path(vDir, "plots")
+tablesDir <- file.path(vDir, "tables")
+oldDir <- file.path(vDir, "data/old")
+dataDir <-("data")
+resDir <- ("results")
 
 # Load Data ---------------------------------------------------------------
-monocle.obj <- readRDS(file.path(dataDir, "scRNAseq_0_souped.cds"))
+monocle.obj <- read_rds(file.path(dataDir, "1_qc.cds"))
 
 # Unsupervised Analysis --------------------------------------------------------
-
 # Process dataset
 monocle.obj <-
     preprocess_cds(monocle.obj, verbose = TRUE) %>%
@@ -40,4 +39,4 @@ monocle.obj <- cluster_cells(monocle.obj)
 monocle.obj@colData$Cluster <- unname(clusters(monocle.obj[,rownames(colData(monocle.obj))]))
 
 # Store dataset
-saveRDS(monocle.obj, file = file.path(dataDir, "scRNAseq_1_monocle.cds"))
+write_rds(monocle.obj, file.path(dataDir, "2_unsupervised.cds"))
