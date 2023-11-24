@@ -82,111 +82,110 @@ CountsAB <- lapply(ab_list, GetAssayData, slot = "counts")
 
 write_rds(CountsAB, file.path(dataDir, "ab_counts.rds"))
 
-
 # Pre-Processing ---------------------------------------------------------
 
-AssignMetadata <- function(sx, abcounts) {
-    stopifnot(all(colnames(sx) == colnames(abcounts)))
-    
-    ab.hash <- abcounts[grepl("-[0-9]+$", row.names(abcounts)), ]
-    ab.aggr <-
-        list(
-            "HTO-fLN-40B2-1" = 1:3,
-            "HTO-fLN-40B2-2" = 4:6,
-            "HTO-fLN-40B2-3" = 7:9
-        ) %>%
-        sapply(function(x)
-            colSums(ab.hash[x, ])) %>%
-        t() %>%
-        as("sparseMatrix")
-    
-    stopifnot(colSums(ab.aggr) == colSums(ab.hash))
-    
-    ab.cd4 <- abcounts[grepl("CD[1-9]$", row.names(abcounts)), ]
-    ab.cd45 <- abcounts[grepl("CD45.*$", row.names(abcounts)), ]
-    
-    if (any(grepl("GD", rownames(abcounts)))) {
-        ab.gd <- abcounts[grepl("GD", rownames(abcounts)), ]
-        ab.gdcd4 <- abcounts[grepl("GD|CD4$", rownames(abcounts)), ]
-    } else {
-        ab.gd <- NULL
-        ab.gdcd4 <- NULL
-    }
-    
-    assign_ab <- function(ab, threshold) {
-        ratio <- t(t(as.matrix(ab)) / colSums(ab))
-        #which ab fulfills the threshold criteria in each cell?
-        apply(ratio, 2, function(col) {
-            id <- which(col > threshold)
-            if (length(id) == 0)
-                return("Undefined")
-            names(id)
-        })
-    }
-    
-    aggr <- assign_ab(ab.aggr, 0.6)
-    hash <- assign_ab(ab.hash, 0.6)
-    cd4cd8 <- assign_ab(ab.cd4, 0.75)
-    cd45x <- assign_ab(ab.cd45, 0.6)
-    if (!is.null(ab.gd)) {
-        gdcd4 <- assign_ab(ab.gdcd4, 0.75)
-    } else {
-        gdcd4 <- NULL
-    }
-    
-    max_ratio <- function(x) {
-        colMaxs(as.matrix(x)) / colSums(x)
-    }
-    
-    sx@meta.data <- sx@meta.data %>%
-        mutate(
-            hash,
-            aggr,
-            cd4cd8,
-            cd45x,
-            gdcd4 = if (!is.null(ab.gd)) {
-                gdcd4
-            } else
-                NA,
-            gd.ratio = if (!is.null(ab.gd)) {
-                ab.gdcd4["HTO-GD.TCR",] / colSums(ab.gdcd4)
-            } else
-                NA,
-            hash.sum = colSums(ab.hash),
-            hash.ratio = max_ratio(ab.hash),
-            hash.agg.ratio = max_ratio(ab.aggr),
-            CD45 = ab.cd45["HTO-CD45.1",] / colSums(ab.cd45),
-            CD45.sum = colSums(ab.cd45),
-            CD4 = ab.cd4['HTO-CD4',] / colSums(ab.cd4),
-            CD4.sum = colSums(ab.cd4)
-        )
-    sx
-}
-
-#Assign meta
-data_list <- mapply(AssignMetadata, data_list, CountsAB)
-
-#Determine %mito genes
-data_list <- lapply(data_list, function(x) {
-    x$percent.mt <- PercentageFeatureSet(x, pattern = "^mt-")
-    return(x)
-})
-
-#cell cycle scoring
-data_list <- sapply(seq_along(data_list), function(x, y, i) {
-    obj <- x[[i]]
-    obj$sample <- y[[i]]
-    obj <- NormalizeData(obj, verbose = T)
-    obj <- CellCycleScoring(
-        obj,
-        s.features = str_to_title(cc.genes$s.genes),
-        g2m.features = str_to_title(cc.genes$g2m.genes),
-        set.ident = TRUE
-    )
-    
-    setNames(list(obj), y[[i]])
-}, x = data_list, y = names(data_list), USE.NAMES = F)
-
+# AssignMetadata <- function(sx, abcounts) {
+#     stopifnot(all(colnames(sx) == colnames(abcounts)))
+#     
+#     ab.hash <- abcounts[grepl("-[0-9]+$", row.names(abcounts)), ]
+#     ab.aggr <-
+#         list(
+#             "HTO-fLN-40B2-1" = 1:3,
+#             "HTO-fLN-40B2-2" = 4:6,
+#             "HTO-fLN-40B2-3" = 7:9
+#         ) %>%
+#         sapply(function(x)
+#             colSums(ab.hash[x, ])) %>%
+#         t() %>%
+#         as("sparseMatrix")
+#     
+#     stopifnot(colSums(ab.aggr) == colSums(ab.hash))
+#     
+#     ab.cd4 <- abcounts[grepl("CD[1-9]$", row.names(abcounts)), ]
+#     ab.cd45 <- abcounts[grepl("CD45.*$", row.names(abcounts)), ]
+#     
+#     if (any(grepl("GD", rownames(abcounts)))) {
+#         ab.gd <- abcounts[grepl("GD", rownames(abcounts)), ]
+#         ab.gdcd4 <- abcounts[grepl("GD|CD4$", rownames(abcounts)), ]
+#     } else {
+#         ab.gd <- NULL
+#         ab.gdcd4 <- NULL
+#     }
+#     
+#     assign_ab <- function(ab, threshold) {
+#         ratio <- t(t(as.matrix(ab)) / colSums(ab))
+#         #which ab fulfills the threshold criteria in each cell?
+#         apply(ratio, 2, function(col) {
+#             id <- which(col > threshold)
+#             if (length(id) == 0)
+#                 return("Undefined")
+#             names(id)
+#         })
+#     }
+#     
+#     aggr <- assign_ab(ab.aggr, 0.6)
+#     hash <- assign_ab(ab.hash, 0.6)
+#     cd4cd8 <- assign_ab(ab.cd4, 0.75)
+#     cd45x <- assign_ab(ab.cd45, 0.6)
+#     if (!is.null(ab.gd)) {
+#         gdcd4 <- assign_ab(ab.gdcd4, 0.75)
+#     } else {
+#         gdcd4 <- NULL
+#     }
+#     
+#     max_ratio <- function(x) {
+#         colMaxs(as.matrix(x)) / colSums(x)
+#     }
+#     
+#     sx@meta.data <- sx@meta.data %>%
+#         mutate(
+#             hash,
+#             aggr,
+#             cd4cd8,
+#             cd45x,
+#             gdcd4 = if (!is.null(ab.gd)) {
+#                 gdcd4
+#             } else
+#                 NA,
+#             gd.ratio = if (!is.null(ab.gd)) {
+#                 ab.gdcd4["HTO-GD.TCR",] / colSums(ab.gdcd4)
+#             } else
+#                 NA,
+#             hash.sum = colSums(ab.hash),
+#             hash.ratio = max_ratio(ab.hash),
+#             hash.agg.ratio = max_ratio(ab.aggr),
+#             CD45 = ab.cd45["HTO-CD45.1",] / colSums(ab.cd45),
+#             CD45.sum = colSums(ab.cd45),
+#             CD4 = ab.cd4['HTO-CD4',] / colSums(ab.cd4),
+#             CD4.sum = colSums(ab.cd4)
+#         )
+#     sx
+# }
+# 
+# #Assign meta
+# data_list <- mapply(AssignMetadata, data_list, CountsAB)
+# 
+# #Determine %mito genes
+# data_list <- lapply(data_list, function(x) {
+#     x$percent.mt <- PercentageFeatureSet(x, pattern = "^mt-")
+#     x
+# })
+# 
+# #cell cycle scoring
+# data_list <- sapply(seq_along(data_list), function(x, y, i) {
+#     obj <- x[[i]]
+#     obj$sample <- y[[i]]
+#     obj <- NormalizeData(obj, verbose = T)
+#     obj <- CellCycleScoring(
+#         obj,
+#         s.features = str_to_title(cc.genes$s.genes),
+#         g2m.features = str_to_title(cc.genes$g2m.genes),
+#         set.ident = TRUE
+#     )
+#     
+#     setNames(list(obj), y[[i]])
+# }, x = data_list, y = names(data_list), USE.NAMES = F)
+# 
 
 #exclude barcodes with less than 50 UMIs for soupx analysis
 
@@ -211,7 +210,7 @@ seurat_analysis <- function(object){
     seu.obj <- object
     seu.obj <- NormalizeData(seu.obj)
     seu.obj <- FindVariableFeatures(seu.obj)
-    seu.obj <- ScaleData(seu.obj, vars.to.regress = c("Phase"))
+    seu.obj <- ScaleData(seu.obj)
     seu.obj <- RunPCA(seu.obj)
     
     #Determine Dimensionality + Unsup Ana
@@ -224,19 +223,25 @@ seurat_analysis <- function(object){
     sweep.list <- paramSweep_v3(seu.obj, PCs = dims, sct = FALSE)
     sweep.stats <- summarizeSweep(sweep.list, GT = FALSE)
     bcmvn <- find.pK(sweep.stats)
-    pk <- bcmvn[which.max(bcmvn$BCmetric), "pK"] %>% droplevels() %>% levels %>% as.numeric()
+    pk <- bcmvn[which.max(bcmvn$BCmetric), "pK"] %>% 
+        droplevels() %>% 
+        levels %>% 
+        as.numeric()
     nExp <- round(0.075*nrow(seu.obj@meta.data))
     seu.obj <- doubletFinder_v3(seu.obj, PCs = dims, pK = pk, nExp = nExp)
     
-    return(seu.obj)
+    colnames(seu.obj@meta.data)[grepl(
+        "DF.class", 
+        colnames(seu.obj@meta.data))] <- "doublet_classification"
+    
+    colnames(seu.obj@meta.data)[grepl(
+        "pANN", 
+        colnames(seu.obj@meta.data))] <- "pANN"
+    
+    seu.obj
 }
 
 seu <- lapply(data_subset, seurat_analysis)
-seu <- lapply(seu, function(x){
-    colnames(x@meta.data)[grepl("DF.class", colnames(x@meta.data))] <- "doublet_classification"
-    colnames(x@meta.data)[grepl("pANN", colnames(x@meta.data))] <- "pANN"
-    return(x)
-})
 
 seu <- Merge_Seurat_List(seu, add.cell.ids = names(seu))
 
@@ -247,41 +252,16 @@ new_names <-
 
 seu <- RenameCells(seu, new.names = new_names)
 
-# Create Monocle Objects --------------------------------------------------
-#Create monocle object from seurat object
-monocle.obj <- new_cell_data_set(expression_data = seu@assays$RNA@counts, 
-                                 cell_metadata = seu@meta.data)
-rowData(monocle.obj)$gene_short_name <- row.names(rowData(monocle.obj))
-
+# Create Objects --------------------------------------------------
+#Save Seurat object
+write_rds(seu, file.path(dataDir, '0_souped.rds'))
 
 #Create Lookup-Table for later use in QC
-doublet_LUT <- monocle.obj@colData[, "doublet_classification", drop = F]
+doublet_LUT <- seu@meta.data[, "doublet_classification", drop = F]
 doublet_LUT <- as.data.table(doublet_LUT, keep.rownames = T) 
 
 write_rds(doublet_LUT, file.path(dataDir, "doublet_LUT.rds"))
 
-# Process dataset again (I like monocle more here)
-monocle.obj <-
-    preprocess_cds(monocle.obj, verbose = TRUE) %>%
-    reduce_dimension(preprocess_method = "PCA", verbose = TRUE)
-
-monocle.obj <- align_cds(monocle.obj,
-                         alignment_group = "sample", 
-                         residual_model_formula_str = "~Phase",
-                         verbose = TRUE
-)
-
-monocle.obj <- reduce_dimension(monocle.obj,
-                                reduction_method = "UMAP",
-                                preprocess_method = "Aligned",
-                                verbose = TRUE)
-
-# Clustering
-monocle.obj <-  cluster_cells(monocle.obj)
-#assign metadata column
-monocle.obj@colData$Cluster <- unname(clusters(monocle.obj[,rownames(colData(monocle.obj))]))
-
-write_rds(monocle.obj, file.path(dataDir, "0_souped.cds"))
 
 #Raw reads as monocle object
 monocle.raw.list <- lapply(data_list_raw, function(x){
@@ -299,22 +279,27 @@ write_rds(monocle.raw, file.path(dataDir, "0_monocle_raw.cds"))
 
 # Load Data ---------------------------------------------------------------
 #remove comment when needed
-monocle.obj <- read_rds(file.path(dataDir, "0_souped.cds"))
+seu <- read_rds(file.path(dataDir, "0_souped.rds"))
 monocle.raw <- read_rds(file.path(dataDir, "0_monocle_raw.cds"))
 
 # SoupX -------------------------------------------------------------------
-sc <- SoupChannel(counts(monocle.raw), 
-                  counts(monocle.obj))
 
-sc <- setClusters(sc, setNames(monocle.obj@colData$Cluster, rownames(monocle.obj@colData)))
+sample <- str_extract(
+    colnames(seu), "[:alpha:]+_[:alnum:]+$"
+    ) %>% unique()
+
+doParallel::registerDoParallel(cores=6)
+foreach(sx = sample) %dopar% {
+    
+sc <- SoupChannel(counts(monocle.raw[, grepl(sx, colnames(monocle.raw))]), 
+                  GetAssayData(seu[, grepl(sx, colnames(seu))], slot = 'counts'))
+
+sc <- setClusters(sc, Idents(seu[, grepl(sx, colnames(seu))]))
 sc <- autoEstCont(sc)
 out <- adjustCounts(sc)
 
-doParallel::registerDoParallel(cores=8)
-foreach(sx = unique(monocle.obj@colData$sample)) %dopar% {
-x <- out[,grepl(sx, colnames(out))]
 DropletUtils:::write10xCounts(file.path(vDir, paste0("data/countsSoupX/", sx)), 
-                              x = x, 
+                              x = out, 
                               type = "sparse", 
                               version = "3")
 }

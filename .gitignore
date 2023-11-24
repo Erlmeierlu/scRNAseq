@@ -48,10 +48,11 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# Symbolic links
+# Symbolic links and data folders
 /data
 /plots
 /tables
+/results
 
 #Specific Folders
 /scripts/old

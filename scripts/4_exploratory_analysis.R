@@ -4,6 +4,7 @@ library(stringr)
 library(monocle3)
 library(data.table)
 library(ggplot2)
+library(readr)
 
 #personal theme
 theme_my <- function() {
@@ -37,51 +38,54 @@ theme_my <- function() {
 }
 
 #setting up directories
-baseDir <- getwd()
-rawDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/raw_data/scRNA_from_BSF/COUNT")
-plotsDir <- file.path(baseDir, "plots/")
-tablesDir <- file.path(baseDir, "tables/")
-dataDir <- file.path(baseDir, "data/")
-
+vDir <- ("/vscratch/scRNAseq")
+plotsDir <- file.path(vDir, "plots")
+tablesDir <- file.path(vDir, "tables")
+oldDir <- file.path(vDir, "data/old")
+dataDir <-("data")
+resDir <- ("results")
 
 
 # Load Data ---------------------------------------------------------------
-monocle.obj <- readRDS(file.path(dataDir, "/scRNAseq_2_monocle.cds"))
-mon.old <- readRDS(file.path(dataDir, "old/scRNAseq_2_monocle_old.cds"))
-new.clusters <- read.csv(file.path(tablesDir, "NewClusterML.csv"))
-laia.clusters <- read.csv(file.path(tablesDir, "Ludwig4.csv"))
+LUT <- read_rds(file.path(dataDir, 'doublet_LUT.rds'))
+setDT(LUT)
+
+monocle.obj <- read_rds(file.path(dataDir, "/3_annotated_monocle.cds"))
+mon.old <- read_rds(file.path(oldDir, "scRNAseq_3_monocle_more_hash_cutoff.cds"))
+# new.clusters <- read.csv(file.path(tablesDir, "NewClusterML.csv"))
+# laia.clusters <- read.csv(file.path(tablesDir, "Ludwig4.csv"))
 
 mon.old <- mon.old[,!grepl("fLN_40B3", colnames(mon.old))]
 mon.old@colData <- mon.old@colData %>% droplevels()
-mon.old <- mon.old[,colnames(mon.old) %in% colnames(monocle.obj)]
+mon.old@colData$doublet <- LUT[match(colnames(mon.old), rn)]$doublet_classification
+# mon.old <- mon.old[,colnames(mon.old) %in% colnames(monocle.obj)]
 
-stopifnot(rownames(colData(monocle.obj)) == rownames(colData(mon.old)))
-monocle.obj@colData$Cluster_old_unfiltered <- mon.old@colData$Cluster
+# stopifnot(all(rownames(colData(monocle.obj)) == rownames(colData(mon.old))))
+# monocle.obj@colData$Cluster_old_unfiltered <- mon.old@colData$Cluster
 
-monocle.obj@colData$same_ct <- monocle.obj@colData$celltype == monocle.obj@colData$celltype_old
+# monocle.obj@colData$same_ct <- monocle.obj@colData$celltype == monocle.obj@colData$celltype_old
 # Exploratory Analysis ----------------------------------------------------
 
+# dt <- as.data.table(monocle.obj@colData, keep.rownames = TRUE)
 
-dt <- as.data.table(monocle.obj@colData, keep.rownames = TRUE)
-
-dt <- dt[,.(celltype, celltype_old, Cluster, Cluster_old_unfiltered, cd45x, cd4cd8, rn)]
-
-dt[celltype != celltype_old, .N, keyby = .(celltype, celltype_old)] %>% 
-  ggplot(aes(celltype, celltype_old)) + 
-  geom_point(aes(size = log10(N))) + 
-  theme_my() +
-  ggtitle("old vs new celltype") +
-  coord_flip()
-ggsave(file.path(dataDir, "ct_old_vs_new.pdf"))
-
-pdf(file.path(dataDir, "ct_numbers_diff.pdf"))
-c("diff" = sum(dt[,celltype != celltype_old]), "same" = sum(dt[,celltype == celltype_old])) %>% 
-  barplot()
-dev.off()
-
+# dt <- dt[,.(celltype, celltype_old, Cluster, Cluster_old_unfiltered, cd45x, cd4cd8, rn)]
+# 
+# dt[celltype != celltype_old, .N, keyby = .(celltype, celltype_old)] %>% 
+#   ggplot(aes(celltype, celltype_old)) + 
+#   geom_point(aes(size = log10(N))) + 
+#   theme_my() +
+#   ggtitle("old vs new celltype") +
+#   coord_flip()
+# ggsave(file.path(dataDir, "ct_old_vs_new.pdf"))
+# 
+# pdf(file.path(dataDir, "ct_numbers_diff.pdf"))
+# c("diff" = sum(dt[,celltype != celltype_old]), "same" = sum(dt[,celltype == celltype_old])) %>% 
+#   barplot()
+# dev.off()
+# 
 
 # Save Object -------------------------------------------------------------
-saveRDS(monocle.obj, file = file.path(dataDir, "scRNAseq_2a_monocle.cds"))
+# saveRDS(monocle.obj, file = file.path(dataDir, "scRNAseq_2a_monocle.cds"))
 
 ## Assignment ------------------------------------------------------
 
@@ -212,26 +216,55 @@ ggsave(file.path(plotsDir, "UMAP_cluster.jpg"))
 
 
 plot_cells(monocle.obj, group_cells_by="cluster", 
-           color_cells_by="celltype_old",
+           color_cells_by="celltype",
            label_groups_by_cluster=F,
            group_label_size = 4) 
 
 ggsave(file.path(plotsDir, "UMAP_annotated.jpg"))
 
-plot_cells(monocle.obj, group_cells_by="cluster", 
-           color_cells_by="same_ct",
+plot_cells(mon.old, group_cells_by = 'cluster',
+           color_cells_by="celltype",
            label_groups_by_cluster=F,
            group_label_size = 4) 
 
-ggsave(file.path(plotsDir, "UMAP_same_ct.jpg"))
+ggsave(file.path(plotsDir, "old_UMAP_annotated.jpg"))
+
+old_co <- reducedDims(mon.old)
+old_co <- data.frame(old_co$UMAP)
+colnames(old_co) <- c("UMAP1", "UMAP2")
+old_co$experiment <- colData(mon.old)$experiment
+old_co$cd45x <- colData(mon.old)$cd45x
+old_co$cd4cd8 <- colData(mon.old)$cd4cd8
+old_co$hashid <- colData(mon.old)$hashid
+old_co$gdcd4 <- colData(mon.old)$gdcd4
+old_co$treatment <- colData(mon.old)$treatment
+old_co$hashid.agg <- colData(mon.old)$hashid.agg
+old_co$treatment.agg <- colData(mon.old)$treatment.agg
+old_co$doublet <- colData(mon.old)$doublet
+
+ggplot(old_co) + 
+  geom_hex(data = old_co %>% dplyr::select(-doublet), 
+           aes(x = UMAP1, y = UMAP2), fill = "ivory3", bins  = 200) + 
+  geom_hex(aes(x = UMAP1, y = UMAP2), bins = 200) + 
+  scale_fill_gradient(low = "deepskyblue2", high = "red", limits = c(0,40), oob = scales::squish) +
+  facet_wrap( ~doublet, nrow = 2) +
+  theme_my()
+
+ggsave(file.path(plotsDir, "old_UMAP_doublet.jpg"))
+# plot_cells(monocle.obj, group_cells_by="cluster", 
+#            color_cells_by="same_ct",
+#            label_groups_by_cluster=F,
+#            group_label_size = 4) 
+# 
+# ggsave(file.path(plotsDir, "UMAP_same_ct.jpg"))
+
 
 # Markers -----------------------------------------------------------------
 
 ## Krt5 expression among ct_clusters
-monocle.obj <- readRDS(file.path(dataDir, "scRNAseq_2a_monocle.cds"))
 
-monocle.obj[, monocle.obj@colData %>% subset(organ == "LN" &
-                                               experiment == "HDAC2") %>% droplevels %>% rownames()] %>%
+monocle.obj[, monocle.obj@colData %>% subset(organ == "Skin" &
+                                               experiment == "HDAC1") %>% droplevels %>% rownames()] %>%
   plot_genes_by_group(
     c("Krt5", "Cd4", "Foxp3"),
     group_cells_by = "ct_cluster",

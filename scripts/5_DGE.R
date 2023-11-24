@@ -5,9 +5,8 @@ library(monocle3)
 library(data.table)
 library(limma)
 library(edgeR)
+library(readr)
 
-#set seed
-set.seed(42)
 #personal theme
 theme_my <- function() {
   theme(
@@ -24,9 +23,9 @@ theme_my <- function() {
     axis.ticks = element_line(colour = "black"),
     legend.key = element_blank(),
     text = element_text(size = 15),
-    # strip.text.x = element_text(size = 10, margin = margin(b = 2, t = 2)),
+    strip.text.x = element_text(size = 10, margin = margin(b = 2, t = 2)),
     strip.background = element_rect(
-      fill = "lightgray",
+      fill = "#9FD7D2",
       colour = "black",
       size = 1
     ),
@@ -40,62 +39,73 @@ theme_my <- function() {
 }
 
 #setting up directories
-baseDir <- getwd()
-rawDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/raw_data/scRNA_from_BSF/COUNT")
-plotsDir <- file.path(baseDir, "plots/")
-tablesDir <- file.path(baseDir, "tables/")
-dataDir <- file.path(baseDir, "data/")
-bulkDir <- "~/Desktop/MasterThesis/myTables/"
+vDir <- ("/vscratch/scRNAseq")
+plotsDir <- file.path(vDir, "plots")
+tablesDir <- file.path(vDir, "tables")
+oldDir <- file.path(vDir, "data/old")
+dataDir <-("data")
+resDir <- ("results")
 
 # Load Data ---------------------------------------------------------------
 
-monocle.obj <- readRDS(file.path(dataDir, "old/scRNAseq_3_monocle_more_hash_cutoff.cds"))
-# monocle.obj_old <- readRDS(file.path("scRNAseq_3_monocle.cds"))
-
-# monocle.obj@colData$celltype <- monocle.obj@colData$celltype %>% str_replace_all(" |\\-", "_")
+monocle.obj <- read_rds(file.path(dataDir, "/3_annotated_monocle.cds"))
 
 # DGE Analysis -------------------------------------------------
 
 ## Pseudo Bulk -------------------------------------------------------------
 
 ### Create Pseudo Bulk ------------------------------------------------------
+make_pseudobulk <-
+  function(cds, cell_groups, func = c('sum', 'mean')) {
+    group_df <- cds@colData[, cell_groups] %>%
+      subset(treatment.agg != "Undefined") %>%
+      data.frame() %>%
+      droplevels()
+    
+    setDT(group_df, keep.rownames = "rn")
+    group_df <- group_df[,
+                         .(rn, groups = do.call(paste, c(.SD, sep = "_"))),
+                         .SDcols = -"rn"]
+    
+    cds@colData$Size_Factor <- 1
+    
+    func <- match.arg(func)
+    aggregate_gene_expression(
+      cds,
+      cell_group_df = group_df,
+      norm_method = "size_only",
+      scale_agg_values = F,
+      cell_agg_fun = func
+    )
+  }
 
-monocle.obj@colData$tmp <- monocle.obj@colData$Size_Factor
-monocle.obj@colData$Size_Factor <- 1
-group_df <-
-  data.frame(monocle.obj@colData[, c("sample", "treatment.agg", "celltype")] %>% subset(treatment.agg != "Undefined")) %>% droplevels()
-setDT(group_df, keep.rownames = "rn")
-group_df <- group_df[, .(rn, groups = do.call(paste, c(.SD, sep = "_"))), .SDcols = -"rn"]
+make_designmat <- function(cds, counts) {
+  des <- cds@colData %>% as.data.table()
+  des <- des[treatment.agg != 'Undefined'] %>% droplevels()
+  des <-
+    des[, .(celltype, treatment.agg, sample, sex, organ, experiment)
+        ][
+          , .N, keyby = .(celltype, treatment.agg, sample, organ, experiment)
+          ]
+  des[, rn := paste(sample, treatment.agg, celltype, sep = "_")]
+  
+  des <- as.data.frame(des)
+  rownames(des) <- des[,"rn"]
+  des$rn <- NULL
+  
+  des <- des[match(colnames(counts), rownames(des)),]
+  colnames(des)[2] <- "treatment"
+  
+  des
+}
 
-countsx <-
-        aggregate_gene_expression(
-          monocle.obj,
-                cell_group_df = group_df,
-                norm_method = "size_only",
-                scale_agg_values = F,
-                cell_agg_fun = "sum"
-        )
+countsx <- make_pseudobulk(monocle.obj, 
+                           c("sample", "treatment.agg", "celltype"))
 
-monocle.obj@colData$Size_Factor <- monocle.obj@colData$tmp
-monocle.obj@colData$tmp <- NULL
+designx <- make_designmat(monocle.obj, countsx)
 
-
-designx <- monocle.obj@colData %>% as.data.table()
-designx <- designx[treatment.agg != "Undefined"] %>% droplevels()
-designx <- designx[,.(celltype, treatment.agg, sample, sex, organ, experiment)]
-designx <- designx[, .N, keyby = .(celltype, treatment.agg, sample, organ, experiment)]
-
-designx[, rn := paste(sample, treatment.agg, celltype, sep = "_")]
-
-designx <- as.data.frame(designx)
-rownames(designx) <- designx[,"rn"]
-designx$rn <- NULL
-
-designx <- designx[match(colnames(countsx), rownames(designx)),]
-colnames(designx)[2] <- "treatment"
-
-saveRDS(countsx, file = file.path(dataDir, "counts_pseudobulk.rds"))
-saveRDS(designx, file = file.path(dataDir, "design_pseudobulk.rds"))
+write_rds(countsx, file = file.path(dataDir, "counts_pseudobulk.rds"))
+write_rds(designx, file = file.path(dataDir, "design_pseudobulk.rds"))
 
 ### Limma -------------------------------------------------------------------
 
@@ -217,11 +227,12 @@ res[, direction := .(fcase(logFC < -1 & adj.P.Val < 0.05, "down",
                               default = "NS"))]
 
 
-saveRDS(res, file.path(dataDir, "res.rds"))
+write_rds(res, file.path(resDir, "res.rds"))
 
 # P_val Histos ------------------------------------------------------------
 
-res <- readRDS(file.path(dataDir, "res.rds"))
+res <- read_rds(file.path(resDir, "res.rds"))
+setDT(res)
 
 res[rn == "Foxp3", .(expr = round(AveExpr), celltype, experiment, organ)] %>% unique %>% 
   ggplot() +
@@ -259,13 +270,13 @@ res_fox <- res[round(AveExpr) >= 2]
                       # ct,
                       organx, expx, sep = "_"))
       
-      ggsave(file.path(plotsDir,
-                       paste0(
-                         paste("ave_expr_filter_pseudo_histo",
-                               # ct,
-                               organx, expx, sep = "_"),
-                         ".pdf"
-                       )))
+      # ggsave(file.path(plotsDir,
+                       # paste0(
+                       #   paste("ave_expr_filter_pseudo_histo",
+                       #         # ct,
+                       #         organx, expx, sep = "_"),
+                       #   ".pdf"
+                       # )))
     }
   }
 # }
@@ -305,8 +316,6 @@ res_fox <- res[round(AveExpr) >= 2]
 
 # Cor HDAC1 HDAC2 ---------------------------------------------------------
 
-res[treatment == "WT_vs_ctrl",.(celltype, organ, experiment, treatment, logFC, t, rn)] %>% 
-  dcast(t + logFC ~ experiment)
 
 cors <- res[treatment == "WT_vs_ctrl",.(celltype, organ, experiment, treatment, logFC, t, rn)] %>% 
   dcast(organ + rn + celltype ~experiment, value.var = c("logFC", "t"))
@@ -393,7 +402,9 @@ ggsave(file.path(plotsDir, "cor_old_hdacs_wt.pdf"))
 
   
   y_values <-
-    percent_ct_df %>% group_by(experiment, organ, celltype, treatment.agg) %>% slice_max(n = 1, pc.cells) %>% pivot_wider(
+    percent_ct_df %>% group_by(experiment, organ, celltype, treatment.agg) %>% 
+    slice_max(n = 1, pc.cells) %>% 
+    tidyr::pivot_wider(
       names_from = "treatment.agg",
       values_from = "pc.cells",
       id_cols = c("experiment", "organ", "celltype")

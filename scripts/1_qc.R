@@ -3,6 +3,7 @@ library(stringr)
 library(monocle3)
 library(Seurat)
 library(data.table)
+library(readr)
 
 #setting up directories
 vDir <- ("/vscratch/scRNAseq")
@@ -41,7 +42,7 @@ load_data <- function(dat,
 
 data_list <- sapply(fileDirs, 
                     load_data,
-                    path = file.path(dataDir, "countsSoupX"),
+                    path = file.path(vDir, "data/countsSoupX"),
                     USE.NAMES = FALSE)
 
 CountsAB <- read_rds(file.path(dataDir, "ab_counts.rds"))
@@ -51,7 +52,7 @@ CountsAB <- read_rds(file.path(dataDir, "ab_counts.rds"))
 
 AssignMetadata <- function(sx, abcounts) {
     
-    barcodes <- row.names(sx@meta.data) %>% str_extract("[:alpha:]+\\-\\d")
+    barcodes <- row.names(sx@meta.data) %>% str_extract("^[:alpha:]+\\-\\d")
     abcounts <- abcounts[, colnames(abcounts) %in% barcodes]
     stopifnot(all(barcodes == colnames(abcounts)))
     
