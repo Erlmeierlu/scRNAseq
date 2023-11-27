@@ -12,7 +12,7 @@ library(readr)
 #setting up directories
 vDir <- ("/vscratch/scRNAseq")
 rawDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/raw_data/scRNA_from_BSF/COUNT")
-plotsDir <- file.path(vDir, "plots")
+plotsDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/plots")
 tablesDir <- file.path(vDir, "tables")
 oldDir <- file.path(vDir, "data/old")
 dataDir <- ("data")
@@ -165,30 +165,8 @@ write_rds(CountsAB, file.path(dataDir, "ab_counts.rds"))
 # #Assign meta
 # data_list <- mapply(AssignMetadata, data_list, CountsAB)
 # 
-# #Determine %mito genes
-# data_list <- lapply(data_list, function(x) {
-#     x$percent.mt <- PercentageFeatureSet(x, pattern = "^mt-")
-#     x
-# })
-# 
-# #cell cycle scoring
-# data_list <- sapply(seq_along(data_list), function(x, y, i) {
-#     obj <- x[[i]]
-#     obj$sample <- y[[i]]
-#     obj <- NormalizeData(obj, verbose = T)
-#     obj <- CellCycleScoring(
-#         obj,
-#         s.features = str_to_title(cc.genes$s.genes),
-#         g2m.features = str_to_title(cc.genes$g2m.genes),
-#         set.ident = TRUE
-#     )
-#     
-#     setNames(list(obj), y[[i]])
-# }, x = data_list, y = names(data_list), USE.NAMES = F)
-# 
 
 #exclude barcodes with less than 50 UMIs for soupx analysis
-
 data_subset <-
     lapply(data_list,
            subset,
@@ -295,7 +273,15 @@ sc <- SoupChannel(counts(monocle.raw[, grepl(sx, colnames(monocle.raw))]),
                   GetAssayData(seu[, grepl(sx, colnames(seu))], slot = 'counts'))
 
 sc <- setClusters(sc, Idents(seu[, grepl(sx, colnames(seu))]))
-sc <- autoEstCont(sc)
+
+#for samples with few good markers; Just applies to one skin sample with few cells
+mar <- quickMarkers(sc$toc,clusters = sc$metaData$clusters)
+#to have at least 10 markers with additional 0.03 tfidf buffer
+tfidf_min <- mar$tfidf[which(rank(-mar$tfidf) == 10)] - 0.03
+
+#in most cases tfidfMin will be 1 (the default value)
+sc <- autoEstCont(sc, tfidfMin = min(tfidf_min, 1))
+
 out <- adjustCounts(sc)
 
 DropletUtils:::write10xCounts(file.path(vDir, paste0("data/countsSoupX/", sx)), 

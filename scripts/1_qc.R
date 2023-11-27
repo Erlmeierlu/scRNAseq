@@ -7,7 +7,7 @@ library(readr)
 
 #setting up directories
 vDir <- ("/vscratch/scRNAseq")
-plotsDir <- file.path(vDir, "plots")
+plotsDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/plots")
 tablesDir <- file.path(vDir, "tables")
 oldDir <- file.path(vDir, "data/old")
 dataDir <-("data")
@@ -155,10 +155,10 @@ data_list <- sapply(seq_along(data_list), function(x, y, i) {
 }, x = data_list, y = names(data_list), USE.NAMES = F)
 
 #LookupTable for empty droplets
-LUT <- readr::read_rds(file.path(dataDir, "doublet_LUT.rds"))
-
+LUT <- read_rds(file.path(dataDir, "doublet_LUT.rds"))
 setDT(LUT)
-#filter dead cells; droplets;...
+
+#filter dead cells; doublets;...
 data_subset <-
     lapply(data_list,
            function(x) {
@@ -188,8 +188,18 @@ monocle.obj@colData$cd4cd8 <- as.factor(monocle.obj@colData$cd4cd8)
 monocle.obj@colData$cd45x <- as.factor(monocle.obj@colData$cd45x)
 monocle.obj@colData$sample <- as.factor(monocle.obj@colData$sample)
 monocle.obj@colData$organ <- as.factor(str_extract(monocle.obj@colData$sample, "[A-Z][:alpha:]+"))
-levels1 <- monocle.obj@colData %>% as_tibble %>% filter(organ == "Skin") %>% pull(sample) %>% droplevels() %>%  levels
-levels2 <- monocle.obj@colData %>% as_tibble %>% filter(organ == "LN") %>% pull(sample) %>% droplevels() %>%  levels
+levels1 <- monocle.obj@colData %>% 
+    as_tibble %>% 
+    filter(organ == "Skin") %>% 
+    pull(sample) %>% 
+    droplevels() %>% 
+    levels
+levels2 <- monocle.obj@colData %>% 
+    as_tibble %>% 
+    filter(organ == "LN") %>% 
+    pull(sample) %>% 
+    droplevels() %>% 
+    levels
 levelsx <- paste(c(levels1, levels2))
 monocle.obj@colData$sample <- monocle.obj@colData$sample %>% forcats::fct_relevel(levelsx)
 monocle.obj@colData$Phase <- as.factor(monocle.obj@colData$Phase)

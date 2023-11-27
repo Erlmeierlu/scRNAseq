@@ -39,7 +39,7 @@ theme_my <- function() {
 
 #setting up directories
 vDir <- ("/vscratch/scRNAseq")
-plotsDir <- file.path(vDir, "plots")
+plotsDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/plots")
 tablesDir <- file.path(vDir, "tables")
 oldDir <- file.path(vDir, "data/old")
 dataDir <-("data")

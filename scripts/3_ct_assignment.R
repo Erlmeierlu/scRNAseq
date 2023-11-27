@@ -40,7 +40,7 @@ theme_my <- function() {
 
 #setting up directories
 vDir <- ("/vscratch/scRNAseq")
-plotsDir <- file.path(vDir, "plots")
+plotsDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/plots")
 tablesDir <- file.path(vDir, "tables")
 oldDir <- file.path(vDir, "data/old")
 dataDir <-("data")
@@ -185,7 +185,6 @@ for (ref in names(ref_data)){
 ### assign labels to colData ----------------------------------------------------
 
 # ref based labels
-
 for(variable in ls(pattern = "^cell_types")){
   colData(monocle.obj)[[variable]] <- get(variable)$labels
 }

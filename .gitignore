@@ -53,6 +53,7 @@ rsconnect/
 /plots
 /tables
 /results
-
+/dge-app/data
+/dge-app/design.rds
 #Specific Folders
 /scripts/old
