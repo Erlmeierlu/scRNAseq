@@ -6,6 +6,7 @@ library(data.table)
 library(limma)
 library(edgeR)
 library(readr)
+library(fst)
 
 #personal theme
 theme_my <- function() {
@@ -43,6 +44,7 @@ vDir <- ("/vscratch/scRNAseq")
 plotsDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/plots")
 tablesDir <- file.path(vDir, "tables")
 oldDir <- file.path(vDir, "data/old")
+shinyDir <- ('dge-app')
 dataDir <-("data")
 resDir <- ("results")
 
@@ -87,20 +89,21 @@ make_designmat <- function(cds, counts) {
         ][
           , .N, keyby = .(celltype, treatment.agg, sample, organ, experiment)
           ]
-  des[, rn := paste(sample, treatment.agg, celltype, sep = "_")]
-  
+  des[, rn := paste(sample, celltype, treatment.agg, sep = "_")]
+  des <- des[N > 3]
   des <- as.data.frame(des)
   rownames(des) <- des[,"rn"]
   des$rn <- NULL
   
   des <- des[match(colnames(counts), rownames(des)),]
+  des <- na.omit(des)
   colnames(des)[2] <- "treatment"
   
   des
 }
 
 countsx <- make_pseudobulk(monocle.obj, 
-                           c("sample", "treatment.agg", "celltype"))
+                           c("sample", "celltype", "treatment.agg"))
 
 designx <- make_designmat(monocle.obj, countsx)
 
@@ -121,8 +124,7 @@ for (ct in unique(designx$celltype)) {
       subsetx <- designx %>%
         subset(celltype == ct &
                  organ == organx &
-                 experiment == expx &
-                 N > 3)
+                 experiment == expx)
       
       if (nrow(subsetx) < 2)
         next
@@ -181,6 +183,15 @@ for (ct in unique(designx$celltype)) {
                                       plot = F,
                                       save.plot = F)
       
+      out <- as.data.table(voomx$E, keep.rownames = 'rn')
+      
+      write_fst(out, file.path(
+        shinyDir,
+        'data',
+        paste0('counts_', ct, '_', organx, '_', expx, '.fst')
+      ),
+      compress = 0)
+      
       contrast.matrix <-
         makeContrasts(contrasts = combn(rev(colnames(designmat)[colnames(designmat) != "M"]),
                                         2,
@@ -202,7 +213,7 @@ for (ct in unique(designx$celltype)) {
   }
 }
 
-### Res ---------------------------------------------------------------------
+### Save Res & Shiny Data---------------------------------------------------------------------
 
 res <-
   rbindlist(lapply(results.DGE.pseudo, function(l1) {
@@ -229,6 +240,41 @@ res[, direction := .(fcase(logFC < -1 & adj.P.Val < 0.05, "down",
 
 write_rds(res, file.path(resDir, "res.rds"))
 
+res <- read_rds(file.path(resDir, 'res.rds'))
+res[, ':='(start = fcase(grepl('ctrl', treatment), 'NoT',
+                         default = 'WT'),
+           end = fcase(grepl('KO', treatment), 'cKO',
+                       default = 'WT'))]
+
+cols <- c('coef', 't', 'B', 'direction')
+res[, 
+    keyby = .(celltype, organ, experiment), 
+    write_fst(.SD, 
+              path = file.path(shinyDir, 'data', paste0(
+                paste(.BY, collapse = '_'), 
+                '.fst')
+              ),
+              compress = 0),
+    .SDcols = !cols
+]
+
+list <- res[,.(rn, celltype, organ, experiment, 'direction2' = direction, treatment, t)]
+write.fst(list, file.path(shinyDir, 'data', 'list_for_shiny.fst'))
+
+design <- res[,
+    keyby=.(celltype, organ, experiment),
+    .(AveMin=min(round(AveExpr)),
+      AveMax=max(round(AveExpr)))
+    ][
+      , AveVal := fcase(organ == 'LN' & experiment == 'HDAC1', 3,
+                        organ == 'LN' & experiment == 'HDAC2', 5,
+                        organ == 'Skin' & experiment == 'HDAC1', 8,
+                        organ == 'Skin' & experiment == 'HDAC2', 3
+                        )]
+
+
+write_rds(design, file.path(shinyDir, 'design.rds'))
+
 # P_val Histos ------------------------------------------------------------
 
 res <- read_rds(file.path(resDir, "res.rds"))
@@ -246,20 +292,21 @@ ggsave(file.path(plotsDir, "Foxp3_expression.pdf"))
 res_old <- readRDS(file.path(dataDir, "old/list_for_shiny.rds"))
 res_old$celltype <- res_old$celltype %>% str_replace_all("\\-", "_")
 
-res_fox <- res[round(AveExpr) >= 2]
+res_fox <- res[(organ == 'LN' & experiment == 'HDAC1' & round(AveExpr) > 2) | 
+                 (organ == 'LN' & experiment == 'HDAC2' & round(AveExpr) > 4) | 
+                 (organ == 'Skin' & experiment == 'HDAC1' & round(AveExpr) > 7) |
+                 (organ == 'Skin' & experiment == 'HDAC2' & round(AveExpr) > 2)]
 
-# for(ct in unique(res$celltype)) {
   for (organx in unique(res_fox$organ)) {
     for (expx in unique(res_fox$experiment)) {
       subsetx <- res_fox %>% filter(
-        # celltype == ct,
                                 organ == organx,
                                 experiment == expx,
                                 !grepl("Intercept|M", coef))
       
       if(nrow(subsetx) == 0) next
       
-      subsetx %>%
+        subsetx %>%
         ggplot() +
         geom_histogram(aes(P.Value, fill = factor(round(AveExpr))),
                        bins = 30) +
@@ -267,19 +314,16 @@ res_fox <- res[round(AveExpr) >= 2]
         theme_my() +
         theme(panel.grid.major = element_blank()) +
         ggtitle(paste("ave_expr_filter_pseudo_histo",
-                      # ct,
                       organx, expx, sep = "_"))
       
-      # ggsave(file.path(plotsDir,
-                       # paste0(
-                       #   paste("ave_expr_filter_pseudo_histo",
-                       #         # ct,
-                       #         organx, expx, sep = "_"),
-                       #   ".pdf"
-                       # )))
+      ggsave(file.path(plotsDir,
+      paste0(
+        paste("filt_ave_expr_pseudo_histo",
+              organx, expx, sep = "_"),
+        ".pdf"
+      )))
     }
   }
-# }
 
 # for(ct in unique(res_old$celltype)) {
 #   for (organx in unique(res_old$organ)) {
@@ -331,9 +375,9 @@ cors[, keyby = .(organ, celltype), .(
       geom_col(aes(celltype, cor), col = "black", fill = "orchid4") +
       facet_grid(variable ~ organ, scales = "free") +
       theme_my() +
-      ggtitle("HDAC1/2 WT cors old data")
+      ggtitle("HDAC1/2 WT cor")
 
-ggsave(file.path(plotsDir, "cor_old_hdacs_wt.pdf"))
+ggsave(file.path(plotsDir, "cor_hdacs_wt.pdf"))
 
 # Percent Celltype Analysis--------------------------------------------------------
 

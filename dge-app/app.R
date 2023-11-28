@@ -12,6 +12,7 @@ library(fgsea)
 library(viridis)
 library(ggsignif)
 library(fst)
+library(readr)
 
 
 # Functions ---------------------------------------------------------------
@@ -42,9 +43,9 @@ theme_my <- function(...) {
             size = 8,
             hjust = 1,
             vjust = 0.5
-        ),
-        ... 
-    )
+        )
+    ) + 
+        theme(...)
 }
 
 enrichrGetGenesets <- function(databases) {
@@ -103,6 +104,16 @@ my_fgsea <- function(stats, pathways) {
               idcol = "cell")
 }
 
+plot_histo <- function(object) {
+    object %>% 
+        ggplot() +
+            geom_histogram(aes(P.Value, fill = factor(round(AveExpr))),
+                           bins = 30) +
+            facet_wrap(~ treatment) +
+            theme_my(panel.grid.major = element_blank())
+}
+                       
+   
 plot_volcano <- function(object,
                          intercept = 1,
                          highlight = NULL) {
@@ -200,7 +211,7 @@ plot_enr <- function(df) {
         )
 }
 
-plot_gene_plot <- function(data, stats) {
+plot_gene_plot <- function(data, stats, gene) {
     ggplot(data, aes(treatment, NormExpr)) +
         geom_boxplot(
             size = 0.5,
@@ -210,7 +221,7 @@ plot_gene_plot <- function(data, stats) {
             width = 0.5
         ) +
         geom_jitter(
-            aes(fill = log2(n), shape = sex),
+            aes(fill = log2(N), shape = sex),
             width = 0.1,
             size = 2.5,
             height = 0,
@@ -244,7 +255,7 @@ plot_gene_plot <- function(data, stats) {
             legend.key = element_blank(),
             axis.text.x = element_text(angle = 0, hjust = 0.5)
         ) +
-        ggtitle(data$rn) +
+        ggtitle(gene) +
         scale_fill_viridis(
             name = "log2(Number Of Cells)",
             discrete = F,
@@ -272,11 +283,11 @@ plot_fgsea <- function(df) {
 
 
 # Load Data ---------------------------------------------------------------
-shinyDir <- ('dge-app')
-dataDir <- ('data')
+dataDir <- ('../data')
 
 #load data
-design.res <- read_rds(file.path(shinyDir, 'design.rds'))
+design.res <- read_rds('design.rds')
+setDT(design.res)
 
 # UI Section --------------------------------------------------------------
 
@@ -308,7 +319,7 @@ ui <- fluidPage(
                      selectizeInput(
                          "celltype",
                          "Celltype:",
-                         choices = design.res$celltype,
+                         choices = unique(design.res$celltype),
                          multiple = FALSE
                      ),
                      selectInput(
@@ -323,11 +334,16 @@ ui <- fluidPage(
                      selectInput(
                          "experiment",
                          "Experiment:",
-                         choices = design.res$experiment,
+                         choices = unique(design.res$experiment),
                          multiple = FALSE,
                          selectize = FALSE,
                          size = 2
                      ),
+                     sliderInput('expr_cut',
+                                 'AveExpr Cutoff:',
+                                 min = min(design.res$AveMin),
+                                 max = max(design.res$AveMax),
+                                 value = min(design.res$AveMin)),
                      numericInput(
                          "xintercept",
                          "logFC threshold:",
@@ -352,7 +368,7 @@ ui <- fluidPage(
         column(10,
                tabsetPanel(
                    tabPanel(
-                       "Plot",
+                       "Volcano Plot",
                        column(
                            7,
                            div(
@@ -396,6 +412,15 @@ ui <- fluidPage(
                                                "Save Plot"))
                        )
                    ),
+                   tabPanel('P-Value Histogram',
+                            column(
+                                9,
+                                div(
+                                    style = "position:relative",
+                                    plotOutput('pval_histo')
+                                )
+                            )
+                            ),
                    tabPanel("Table", dataTableOutput("table"),
                             fluidRow(column(
                                 12,
@@ -447,8 +472,8 @@ ui <- fluidPage(
                          selectizeInput(
                              "ct_enr",
                              "Celltype(s):",
-                             choices = design.res$celltype,
-                             selected = design.res$celltype,
+                             choices = unique(design.res$celltype),
+                             selected = unique(design.res$celltype),
                              multiple = TRUE
                          ),
                          selectizeInput(
@@ -463,9 +488,9 @@ ui <- fluidPage(
                          selectizeInput(
                              "exp_enr",
                              "Experiment(s):",
-                             choices = design.res$experiment,
+                             choices = unique(design.res$experiment),
                              multiple = TRUE,
-                             selected = design.res$experiment
+                             selected = unique(design.res$experiment)
                          )
                          
                      ),
@@ -509,9 +534,8 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
     
-    object <- eventReactive(input$plotter, {
-        res.pb <- read.fst(file.path(shinyDir,
-                                     "data",
+    res_dat <- reactive({
+        res.pb <- read.fst(file.path("data",
                                      paste0(
                                          input$celltype,
                                          "_",
@@ -537,10 +561,18 @@ server <- function(input, output, session) {
             p_transformed = -log10(P.Value)
         )]
         
-    })
+    }) %>% 
+        bindEvent(input$plotter)
+    
+    object <- reactive({
+        x <- res_dat()[round(AveExpr) >= input$expr_cut]
+        x[, adj.P.Val := p.adjust(P.Value, method = 'BH')]
+        x
+    }) %>% 
+        bindEvent(req(res_dat()))
     
     designx <- reactive({
-        setDT(readRDS(file.path(dataDir, "design_pseudobulk.rds")),
+        setDT(read_rds(file.path(dataDir, "design_pseudobulk.rds")),
               keep.rownames = "rn")[celltype == input$celltype &
                                         organ == input$organ &
                                         experiment == input$experiment]
@@ -552,7 +584,7 @@ server <- function(input, output, session) {
         read_fst(file.path(
             "data",
             paste0(
-                "voom_counts_",
+                "counts_",
                 input$celltype,
                 "_",
                 input$organ,
@@ -597,10 +629,10 @@ server <- function(input, output, session) {
     gene_data <- reactive({
         gene <- gene_id()
         if(is.null(gene)) return(NULL)
-        data <- countsx()[rn == gene]
+        data <- countsx()[rn == gene][,!'rn']
         data <- melt(
             data,
-            id.vars = "rn",
+            measure.vars = patterns('.*'),
             variable.name = "sample",
             value.name = "NormExpr"
         )
@@ -611,7 +643,7 @@ server <- function(input, output, session) {
                 levels = c("NoT", "WT", "cKO")
             ),
             sex = str_extract(sample, "\\w"),
-            n = designx()[match(rn, data[, sample]), n]
+            N = designx()[match(rn, data[, sample]), N]
         )]
         
         stats <- object()[rn == gene]
@@ -636,7 +668,7 @@ server <- function(input, output, session) {
                 default = "NS"
             )
         )]
-        return(list(data = data, stats = stats))
+        return(list(data = data, stats = stats, gene = gene))
     }) %>%
         bindEvent(gene_id())
     
@@ -666,21 +698,36 @@ server <- function(input, output, session) {
         
     })
     
+    histo <- reactive({
+        plot_histo(object()) +
+            ggtitle(paste(
+                input$celltype,
+                input$organ,
+                input$experiment
+            ))
+    }) %>% 
+        bindEvent(input$plotter)
+    
     output$Volcano_plot <- renderPlot({
         my_plot()
+    })
+    
+    output$pval_histo <- renderPlot({
+        histo()
     })
     
     output$brush_info <- renderPrint({
         if (!is.null(input$plot_brush)) {
             brush = brushedPoints(object(), input$plot_brush)
-            
+
             cat("Selected:\n",
                 paste(brush$rn, collapse = ", "))
         }
         
     })
-    
+
     output$hover_info <- renderUI({
+        
         hover <- input$plot_hover
         point <-
             nearPoints(
@@ -693,19 +740,9 @@ server <- function(input, output, session) {
         
         if (nrow(point) == 0)
             return(NULL)
-        
-        # calculate point position INSIDE the image as percent of total dimensions
-        # from left (horizontal) and from top (vertical)
-        left_pct <-
-            (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
-        top_pct <-
-            (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
-        
-        # calculate distance from left and bottom side of the picture in pixels
-        left_px <-
-            hover$range$left + left_pct * (hover$range$right - hover$range$left)
-        top_px <-
-            hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
+
+        left_px <- hover$coords_css$x
+        top_px <- hover$coords_css$y
         
         # create style property for tooltip
         
@@ -722,9 +759,8 @@ server <- function(input, output, session) {
         )
     })
     
-    
     output$save_plot <- downloadHandler(
-        filename = function() {
+    filename = function() {
             paste0(
                 "volcano",
                 "_",
@@ -750,7 +786,7 @@ server <- function(input, output, session) {
     
     my_gene_plot <- reactive({
         
-        plot_gene_plot(gene_data()$data, gene_data()$stats)
+        plot_gene_plot(gene_data()$data, gene_data()$stats, gene_data()$gene)
         
     }) %>% 
         bindEvent(req(gene_data()))
@@ -778,6 +814,18 @@ server <- function(input, output, session) {
             dev.off()
         }
     )
+
+    observe({
+        des <- design.res[celltype == input$celltype & 
+                              organ == input$organ & 
+                              experiment == input$experiment]
+        updateSliderInput(inputId = 'expr_cut',
+                          min = des[,AveMin],
+                          max = des[,AveMax],
+                          value = des[,AveVal])
+    }) %>%
+        bindEvent(input$celltype, input$organ, input$experiment)
+    
     
     my_table <- reactive({
         x <- brushedPoints(object(), input$plot_brush)
@@ -902,7 +950,7 @@ server <- function(input, output, session) {
                               treatment),
                        .SDcols = !"direction2"]
             
-            res[, data := lapply(res$data, \(x) setNames(x[,t], x[,rn]))]
+            res[, data := lapply(res$data, function(x) setNames(x[,t], x[,rn]))]
             
             
             res <- setNames(res$data,

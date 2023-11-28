@@ -15,6 +15,7 @@ library(readr)
 library(forcats)
 library(scran)
 library(readr)
+library(biomaRt)
 
 #personal theme
 theme_my <- function() {
@@ -59,14 +60,14 @@ old.mon <- readRDS(file.path(oldDir, "scRNAseq_3_monocle_more_hash_cutoff.cds"))
 old_meta <- as.data.frame(colData(old.mon))
 old_counts <- assay(old.mon)
 old.seurat <- CreateSeuratObject(counts = old_counts,
-                                    project = "integrated_scRNAseq",
-                                    assay = "integrated",
+                                    project = "ol",
+                                    assay = "counts",
                                     meta.data = old_meta)
 old.mon <-  as.SingleCellExperiment(old.seurat)
 
 colnames(colData(old.mon))[colnames(colData(old.mon)) == "celltype"] <- "label.fine"
 
-  # SingleR annotation ------------------------------------------------------
+# SingleR annotation ------------------------------------------------------
 
 ## Reference data ----------------------------------------------------------
 
@@ -97,9 +98,21 @@ ref_data <- list(
   old = old.mon
 )
 
+convert_human_to_mouse <- function(gene_list) {
+  mouse_human_genes = read.csv("https://www.informatics.jax.org/downloads/reports/HOM_MouseHumanSequence.rpt",sep="\t")
+  setDT(mouse_human_genes)
+  mouse_human_genes <- mouse_human_genes[Common.Organism.Name %in% c('human', "mouse, laboratory")]
+  
+  vapply(gene_list, function(x) {
+    class_key = mouse_human_genes[Symbol == x, DB.Class.Key]
+    if(identical(class_key, integer(0))) return(x)
+    mouse_human_genes[DB.Class.Key %in% class_key & Common.Organism.Name == "mouse, laboratory", Symbol][1]
+  },  FUN.VALUE = character(1), USE.NAMES = F)
+}
+
 #Human Gene names as Mouse Gene names
 # rownames(ref_data$hpca) <- str_to_title(rownames(ref_data$hpca))
-rownames(ref_data$dice) <- str_to_title(rownames(ref_data$dice))
+rownames(ref_data$dice) <- convert_human_to_mouse(rownames(ref_data$dice))
 # rownames(ref_data$monaco) <- str_to_title(rownames(ref_data$monaco))
 
 metadata <- as.data.frame(colData(monocle.obj))
@@ -118,12 +131,11 @@ sce <-  as.SingleCellExperiment(obj.as.seurat)
 
 ### run singleR with additional saving of original results data -------------------------------
 # parallel computation
-doParallel::registerDoParallel(cores = 7)
+doParallel::registerDoParallel(cores = 5)
 foreach(ref = names(ref_data)) %dopar% {
-  print(ref)
-  labelx <- "label.main"
+  message(ref)
   for(labelx in c("label.main", "label.fine")){
-    print(paste(".", labelx))
+    message(paste(".", labelx))
     
     ref.file <- paste0("cell_types_", ref, "_", labelx, ".csv")
     
@@ -131,7 +143,7 @@ foreach(ref = names(ref_data)) %dopar% {
     
     if(!labelx %in% colnames(colData(ref_data[[ref]]))) next
     
-    print(paste(".", "running SingleR"))
+    message(paste(".", "running SingleR"))
     
     results <- SingleR(
       test = sce,
@@ -205,11 +217,17 @@ ct_majority <-
   slice_max(n = 1, order_by = n, with_ties = F)
 
 monocle.obj@colData$celltype <-
-  str_replace_all(ct_majority[match(monocle.obj@colData$Cluster, ct_majority$Cluster), ]$celltype_raw,
+  str_replace_all(ct_majority[match(monocle.obj@colData$Cluster, ct_majority$Cluster),]$celltype_raw,
                   " |\\-",
-                  "_")
+                  "_") %>%
+  case_when(grepl('CD45', .) ~ "T_CD45.1",
+            grepl('GC', .) ~ 'B_GC',
+            .default = .) %>% 
+  factor()
 
-monocle.obj@colData$ct_cluster <- paste(monocle.obj@colData$Cluster, monocle.obj@colData$celltype, sep = "_")
+monocle.obj@colData$ct_cluster <- paste(
+  monocle.obj@colData$Cluster, monocle.obj@colData$celltype, sep = "_"
+  )
 
 ### heatmaps of ref. based ct anno. --------------------------------------
 
@@ -241,12 +259,15 @@ colnames(freq_list)[1] <- "Cluster"
 freq_list <- merge(freq_list, ct_majority, by = intersect(names(freq_list),names(ct_majority))) %>% dplyr::select(-n)
 
 freq_list <- freq_list %>% 
+  mutate(celltype_raw = str_replace_all(celltype_raw, " |\\-", "_") %>% 
+           case_when(grepl('CD45', .) ~ "T_CD45.1",
+                     grepl('GC', .) ~ 'B_GC',
+                     .default = .)) %>% 
   arrange(celltype_raw, Cluster) %>% 
-  mutate(celltype_raw = str_replace_all(celltype_raw, " |\\-", "_")) %>% 
   unite("ct_cluster", c(Cluster, celltype_raw)) %>% 
   mutate(ct_cluster = fct_inorder(ct_cluster))
 
-saveRDS(freq_list, file.path(vDir, "data", "all_labels_ref_based_for_HM.rds"))
+write_rds(freq_list, file.path(dataDir, "all_labels_ref_based_for_HM.rds"))
 
 # plot a heatmap
 freq_list %>% 
@@ -269,7 +290,7 @@ freq_list %>%
     space = "free"
   )
 
-ggsave(file.path(plotsDir, "all_labels_HM.pdf"), height = 13, width = 25)
+ggsave(file.path(plotsDir, "all_labels_HM.pdf"), height = 13, width = 30)
 
 
 # Save Object -------------------------------------------------------------

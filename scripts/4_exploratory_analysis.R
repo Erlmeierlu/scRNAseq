@@ -1,5 +1,5 @@
-library(tidyr)
 library(dplyr)
+library(tidyr)
 library(stringr)
 library(monocle3)
 library(data.table)
@@ -222,6 +222,15 @@ plot_cells(monocle.obj, group_cells_by="cluster",
 
 ggsave(file.path(plotsDir, "UMAP_annotated.jpg"))
 
+plot_cells(monocle.obj, group_cells_by="cluster", 
+           color_cells_by="celltype_raw",
+           label_groups_by_cluster=F,
+           label_cell_groups = F,
+           group_label_size = 4) 
+
+ggsave(file.path(plotsDir, "UMAP_annotated_raw.jpg"))
+
+
 plot_cells(mon.old, group_cells_by = 'cluster',
            color_cells_by="celltype",
            label_groups_by_cluster=F,
@@ -263,7 +272,7 @@ ggsave(file.path(plotsDir, "old_UMAP_doublet.jpg"))
 
 ## Krt5 expression among ct_clusters
 
-monocle.obj[, monocle.obj@colData %>% subset(organ == "Skin" &
+monocle.obj[, monocle.obj@colData %>% subset(organ == "LN" &
                                                experiment == "HDAC1") %>% droplevels %>% rownames()] %>%
   plot_genes_by_group(
     c("Krt5", "Cd4", "Foxp3"),
@@ -271,9 +280,9 @@ monocle.obj[, monocle.obj@colData %>% subset(organ == "Skin" &
     ordering_type = "none",
     max.size = 3
   ) + theme_my() +
-  ggtitle("HDAC2 LN - Krt5 expression across cts")
+  ggtitle("HDAC1 LN - Krt5 expression across cts")
 
-ggsave(file.path(plotsDir, "krt_HDAC2_LN.pdf"))
+ggsave(file.path(plotsDir, "krt_HDAC1_LN.pdf"))
 
 ## Top Marker Genes
 marker_test_res <- top_markers(monocle.obj, group_cells_by="Cluster",
@@ -289,7 +298,7 @@ top_specific_marker_ids <- unique(top_specific_markers %>% pull(gene_id))
 plot_genes_by_group(monocle.obj,
                     top_specific_marker_ids,
                     group_cells_by="ct_cluster",
-                    ordering_type="none",
+                    ordering_type="maximal_on_diag",
                     max.size=3) +
   theme(axis.text.x = element_text(
     angle = 90,
@@ -298,7 +307,7 @@ plot_genes_by_group(monocle.obj,
   )
   )
 
-ggsave(file.path(plotsDir, "Markers.pdf"), height = 15, width = 10)
+ggsave(file.path(plotsDir, "top_markers_diag_order.pdf"), height = 15, width = 10)
 
 
 ##Custom Markers
@@ -801,69 +810,69 @@ for (plotx in names(ct_plotlist)){
 
 # Lists for cloupe --------------------------------------------------------
 
-# UMAP_projection <- coords %>% dplyr::select(UMAP1, UMAP2)
-# UMAP_projection <- as_tibble(UMAP_projection, rownames = "Barcode")
-# colnames(UMAP_projection) <- c("Barcode", "X Coordinate", "Y Coordinate")
-# 
-# rename_barcodes <- function(object){
-#     
-#     object$Barcode <- case_when(grepl("fLN_40B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-1"),
-#                                 grepl("fLN_40B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-2"),
-#                                 grepl("fLN_41B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-3"),
-#                                 grepl("fLN_41B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-4"),
-#                                 grepl("fLN_41B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-5"),
-#                                 grepl("fLN_B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-6"),
-#                                 grepl("fSkin_40B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-7"),
-#                                 grepl("fSkin_40B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-8"),
-#                                 grepl("fSkin_41B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-9"),
-#                                 grepl("fSkin_41B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-10"),
-#                                 grepl("fSkin_41B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-11"),
-#                                 grepl("fSkin_B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-12"),
-#                                 grepl("mLN_40B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-13"),
-#                                 grepl("mLN_40B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-14"),
-#                                 grepl("mLN_41B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-15"),
-#                                 grepl("mLN_41B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-16"),
-#                                 grepl("mLN_41B4",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-17"),
-#                                 grepl("mLN_B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-18"),
-#                                 grepl("mSkin_40B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-19"),
-#                                 grepl("mSkin_40B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-20"),
-#                                 grepl("mSkin_41B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-21"),
-#                                 grepl("mSkin_41B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-22"),
-#                                 grepl("mSkin_B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-23"))
-#     
-#     return(object)
-# }
-# 
-# UMAP_projection <- rename_barcodes(UMAP_projection)
-# 
-# write.csv(UMAP_projection, file = file.path(tablesDir, "UMAP-Projection-Ludwig4.csv"), quote = F, row.names = F)
-# 
-# graph_based <- monocle.obj@colData %>% as_tibble(rownames = "Barcode") %>% dplyr::select(Barcode, ct_cluster)
-# graph_based$Ludwig4 <- paste("Cluster", graph_based$ct_cluster)
-# graph_based <- graph_based %>% dplyr::select(-ct_cluster)
-# 
-# graph_based <- rename_barcodes(graph_based)
-# 
-# write.csv(graph_based, file = file.path(tablesDir, "Graph-Based-Ludwig4.csv"), quote = F, row.names = F)
-# 
-# treatments <- monocle.obj@colData %>% as_tibble(rownames = "Barcode") %>% dplyr::select(Barcode, treatment.agg)
-# 
-# treatments <- rename_barcodes(treatments)
-# 
-# write.csv(treatments, file = file.path(tablesDir, "Treatments-Ludwig4.csv"), row.names = F)
-# 
-# experiments <- monocle.obj@colData %>% as_tibble(rownames = "Barcode") %>% dplyr::select(Barcode, experiment)
-# 
-# experiments <- rename_barcodes(experiments)
-# 
-# write.csv(experiments, file = file.path(tablesDir, "experiments-Ludwig4.csv"), row.names = F)
-# 
-# exp_treat <- inner_join(experiments,treatments) %>% 
-#     mutate(exp_treat = paste(experiment, 
-#                              str_extract(treatment.agg, "[:alpha:]+$"), 
-#                              sep = "_")) %>% 
-#     select(Barcode, exp_treat)
-# 
-# write.csv(exp_treat, file = file.path(tablesDir, "exp-treat-Ludwig4.csv"), row.names = F)
-# 
+UMAP_projection <- coords %>% dplyr::select(UMAP1, UMAP2)
+UMAP_projection <- as_tibble(UMAP_projection, rownames = "Barcode")
+colnames(UMAP_projection) <- c("Barcode", "X Coordinate", "Y Coordinate")
+
+rename_barcodes <- function(object){
+
+    object$Barcode <- case_when(grepl("fLN_40B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-1"),
+                                grepl("fLN_40B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-2"),
+                                grepl("fLN_41B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-3"),
+                                grepl("fLN_41B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-4"),
+                                grepl("fLN_41B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-5"),
+                                grepl("fLN_B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-6"),
+                                grepl("fSkin_40B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-7"),
+                                grepl("fSkin_40B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-8"),
+                                grepl("fSkin_41B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-9"),
+                                grepl("fSkin_41B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-10"),
+                                grepl("fSkin_41B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-11"),
+                                grepl("fSkin_B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-12"),
+                                grepl("mLN_40B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-13"),
+                                grepl("mLN_40B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-14"),
+                                grepl("mLN_41B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-15"),
+                                grepl("mLN_41B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-16"),
+                                grepl("mLN_41B4",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-17"),
+                                grepl("mLN_B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-18"),
+                                grepl("mSkin_40B2",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-19"),
+                                grepl("mSkin_40B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-20"),
+                                grepl("mSkin_41B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-21"),
+                                grepl("mSkin_41B3",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-22"),
+                                grepl("mSkin_B1",object$Barcode) ~ str_replace(object$Barcode, "\\-1.*","-23"))
+
+    return(object)
+}
+
+UMAP_projection <- rename_barcodes(UMAP_projection)
+
+write.csv(UMAP_projection, file = file.path(tablesDir, "UMAP-Projection-Nov-2023.csv"), quote = F, row.names = F)
+
+graph_based <- monocle.obj@colData %>% as_tibble(rownames = "Barcode") %>% dplyr::select(Barcode, ct_cluster)
+graph_based$Nov2023 <- paste("Cluster", graph_based$ct_cluster)
+graph_based <- graph_based %>% dplyr::select(-ct_cluster)
+
+graph_based <- rename_barcodes(graph_based)
+
+write.csv(graph_based, file = file.path(tablesDir, "Graph-Based-Nov-2023.csv"), quote = F, row.names = F)
+
+treatments <- monocle.obj@colData %>% as_tibble(rownames = "Barcode") %>% dplyr::select(Barcode, treatment.agg)
+
+treatments <- rename_barcodes(treatments)
+
+write.csv(treatments, file = file.path(tablesDir, "Treatments-Nov-2023.csv"), row.names = F)
+
+experiments <- monocle.obj@colData %>% as_tibble(rownames = "Barcode") %>% dplyr::select(Barcode, experiment)
+
+experiments <- rename_barcodes(experiments)
+
+write.csv(experiments, file = file.path(tablesDir, "experiments-Nov-2023.csv"), row.names = F)
+
+exp_treat <- inner_join(experiments,treatments) %>%
+    mutate(exp_treat = paste(experiment,
+                             str_extract(treatment.agg, "[:alpha:]+$"),
+                             sep = "_")) %>%
+    dplyr::select(Barcode, exp_treat)
+
+write.csv(exp_treat, file = file.path(tablesDir, "exp-treat-Nov-2023.csv"), row.names = F)
+
 

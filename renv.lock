@@ -790,6 +790,13 @@
       "Repository": "RSPM",
       "Hash": "bb0eec2fe32e88d9e2836c2f73ea2077"
     },
+    "enrichR": {
+      "Package": "enrichR",
+      "Version": "3.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "8cdcd06e4fa171911dc4d83feaa26467"
+    },
     "ensembldb": {
       "Package": "ensembldb",
       "Version": "2.14.1",
@@ -823,6 +830,19 @@
       "Source": "Repository",
       "Repository": "RSPM",
       "Hash": "77bd60a6157420d4ffa93b27cf6a58b8"
+    },
+    "fastmatch": {
+      "Package": "fastmatch",
+      "Version": "1.1-0",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Hash": "2cfe25650d69960c54e06840e4b5d8e4"
+    },
+    "fgsea": {
+      "Package": "fgsea",
+      "Version": "1.16.0",
+      "Source": "Bioconductor",
+      "Hash": "0ed01e7c1d5fef94d795abb1597aab86"
     },
     "fields": {
       "Package": "fields",
@@ -875,6 +895,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "44594a07a42e5f91fac9f93fda6d0109"
+    },
+    "fst": {
+      "Package": "fst",
+      "Version": "0.9.4",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Hash": "66c2d5dffed8d181b9555617beb2d0f9"
     },
     "furrr": {
       "Package": "furrr",
@@ -981,6 +1008,18 @@
       "Source": "Repository",
       "Repository": "RSPM",
       "Hash": "9d028e8f37c84dba356ce3c367a1978e"
+    },
+    "ggsignif": {
+      "Package": "ggsignif",
+      "Version": "0.6.4.9000",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteUsername": "const-ae",
+      "RemoteRepo": "ggsignif",
+      "RemoteRef": "main",
+      "RemoteSha": "080e11924bec22de19057ae64231353bdd033cd9",
+      "RemoteHost": "api.github.com",
+      "Hash": "e14a82288912810a09b1317bb600b8b3"
     },
     "globals": {
       "Package": "globals",
@@ -1608,6 +1647,13 @@
       "Source": "Bioconductor",
       "Hash": "4e9258b05bbcbc1093eda53aa8051264"
     },
+    "rjson": {
+      "Package": "rjson",
+      "Version": "0.2.20",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Hash": "7d597f982ee6263716b6a2f28efd29fa"
+    },
     "rlang": {
       "Package": "rlang",
       "Version": "1.1.1.9000",
@@ -1735,6 +1781,13 @@
       "Source": "Repository",
       "Repository": "RSPM",
       "Hash": "6e3b6ae7fe02b5859e4bb277f218b8ae"
+    },
+    "shinyWidgets": {
+      "Package": "shinyWidgets",
+      "Version": "0.6.0",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Hash": "7dd5f3ee96c64a47fdbc6e437ff1c7e1"
     },
     "sitmo": {
       "Package": "sitmo",
