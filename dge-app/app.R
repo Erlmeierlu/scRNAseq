@@ -419,7 +419,10 @@ ui <- fluidPage(
                                     style = "position:relative",
                                     plotOutput('pval_histo')
                                 )
-                            )
+                            ),
+                            column(12,
+                                   downloadLink("save_pval",
+                                                "Save Plot"))
                             ),
                    tabPanel("Table", dataTableOutput("table"),
                             fluidRow(column(
@@ -811,6 +814,28 @@ server <- function(input, output, session) {
         content = function(file) {
             pdf(file)
             plot(my_gene_plot())
+            dev.off()
+        }
+    )
+    
+    output$save_pval <- downloadHandler(
+        filename = function() {
+            paste0(
+                "pval_histo",
+                "_",
+                input$celltype,
+                "_",
+                input$organ,
+                "_",
+                input$experiment,
+                '_',
+                input$expr_cut,
+                "_AveExpr_cutoff.pdf"
+            )
+        },
+        content = function(file) {
+            pdf(file)
+            plot(histo())
             dev.off()
         }
     )
