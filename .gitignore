@@ -47,7 +47,7 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
-
+dge-app/rsconnect
 # Symbolic links and data folders
 /data
 /plots
@@ -55,5 +55,6 @@ rsconnect/
 /results
 /dge-app/data
 /dge-app/design.rds
+/dge-app/cached_data
 #Specific Folders
 /scripts/old

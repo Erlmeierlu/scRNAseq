@@ -9,7 +9,7 @@ library(readr)
 library(fst)
 
 #personal theme
-theme_my <- function() {
+theme_my <- function(...) {
   theme(
     panel.grid.major = element_line(colour = "lightgray"),
     panel.grid.minor = element_blank(),
@@ -36,7 +36,7 @@ theme_my <- function() {
       hjust = 1,
       vjust = 0.5
     )
-  )
+  ) + theme(...)
 }
 
 #setting up directories
@@ -50,7 +50,7 @@ resDir <- ("results")
 
 # Load Data ---------------------------------------------------------------
 
-monocle.obj <- read_rds(file.path(dataDir, "/3_annotated_monocle.cds"))
+monocle.obj <- read_rds(file.path(dataDir, "3_annotated_monocle.cds"))
 
 # DGE Analysis -------------------------------------------------
 
@@ -289,9 +289,6 @@ res[rn == "Foxp3", .(expr = round(AveExpr), celltype, experiment, organ)] %>% un
 
 ggsave(file.path(plotsDir, "Foxp3_expression.pdf"))
 
-res_old <- readRDS(file.path(dataDir, "old/list_for_shiny.rds"))
-res_old$celltype <- res_old$celltype %>% str_replace_all("\\-", "_")
-
 res_fox <- res[(organ == 'LN' & experiment == 'HDAC1' & round(AveExpr) > 2) | 
                  (organ == 'LN' & experiment == 'HDAC2' & round(AveExpr) > 4) | 
                  (organ == 'Skin' & experiment == 'HDAC1' & round(AveExpr) > 7) |
@@ -325,39 +322,6 @@ res_fox <- res[(organ == 'LN' & experiment == 'HDAC1' & round(AveExpr) > 2) |
     }
   }
 
-# for(ct in unique(res_old$celltype)) {
-#   for (organx in unique(res_old$organ)) {
-#     for (expx in unique(res_old$experiment)) {
-#       subsetx <- res_old %>% filter(celltype == ct,
-#                                 organ == organx,
-#                                 experiment == expx,
-#                                 !grepl("Intercept|M", coef))
-#       
-#       if(nrow(subsetx) == 0) next
-#       
-#       subsetx %>%
-#         ggplot() +
-#         geom_histogram(aes(P.Value, fill = factor(round(AveExpr))),
-#                        bins = 30) +
-#         facet_wrap(~ treatment) +
-#         theme_my() +
-#         theme(panel.grid.major = element_blank()) +
-#         ggtitle(paste("pseudo_histo",
-#                       ct,
-#                       organx, expx, sep = "_"))
-#       
-#       ggsave(file.path(plotsDir,
-#                        paste0(
-#                          paste("pval_histos/old_pseudo_histo",
-#                                ct,
-#                                organx, expx, sep = "_"),
-#                          ".pdf"
-#                        )))
-#     }
-#   }
-# }
-
-
 # Cor HDAC1 HDAC2 ---------------------------------------------------------
 
 
@@ -381,127 +345,198 @@ ggsave(file.path(plotsDir, "cor_hdacs_wt.pdf"))
 
 # Percent Celltype Analysis--------------------------------------------------------
 
-  percent_ct_df <- monocle.obj@colData %>%
-    as_tibble %>%
-    filter(treatment.agg != "Undefined") %>% 
-    group_by(experiment, organ, treatment.agg, sample,  celltype) %>% 
-    summarise(n = n()) %>% 
-    mutate(cells = sum(n), pc.cells = n/cells*100, sex = str_extract(sample, "^[A-z]"), batch = str_extract(sample, "\\d$")) 
-  
-  comp <- combn(unique(levels(percent_ct_df$treatment.agg %>%
-      droplevels
-  ) %>% 
-    rev),
-  2,
-  FUN = paste,
-  collapse = ";")
-  
-  stats_list <- list()
-  for(ct in unique(percent_ct_df$celltype)){
-    for(organx in unique(percent_ct_df$organ)){
-      for(expx in unique(percent_ct_df$experiment)){
-        for(compx in comp){
-          subsetx <- percent_ct_df %>% filter(treatment.agg %in% unlist(str_split(compx, ";")),
-                                   celltype == ct,
-                                   organ == organx,
-                                   experiment == expx)
-          
-            if(length(unique(subsetx$treatment.agg)) < 2) next
-            else if(length(unique(subsetx$sex)) < 2){
-              mod <- lm(pc.cells ~ treatment.agg, subsetx)
-            }
-            else mod <- lm(pc.cells ~ treatment.agg + sex, subsetx)
-          
-          stats <- summary(mod)$coefficient %>% as_tibble(rownames = "end")
-          
-          stats_fin <- stats %>% filter(grepl("WT|cKO|NoT", end))
-          stats_fin$end <- stats_fin$end %>% str_remove("treatment.agg")
-          colnames(stats_fin) <- colnames(stats_fin) %>% 
-            str_replace_all(" ", "_") %>% 
-            str_remove("\\.")
-          colnames(stats_fin)[5] <- "p_value"
-          
-          stats_list[[ct]][[organx]][[expx]][[compx]] <- stats_fin
-        }
+percent_ct_df <-
+  as.data.table(monocle.obj@colData)[treatment.agg != "Undefined",
+                                     .N,
+                                     by = .(experiment,
+                                            organ,
+                                            treatment.agg,
+                                            sex,
+                                            batch,
+                                            celltype)
+                                     ][
+                                       CJ(experiment = experiment, 
+                                          organ = organ, 
+                                          treatment.agg = treatment.agg, 
+                                          sex = sex, 
+                                          batch = batch,
+                                          celltype = celltype,
+                                          unique = T),
+                                       on = .(experiment,
+                                              organ,
+                                              treatment.agg,
+                                              sex,
+                                              batch,
+                                              celltype
+                                              )
+                                       ] %>% droplevels()
+
+setnafill(percent_ct_df, fill = 0, cols = 'N')
+percent_ct_df[,
+              ':=' (cells = sum(N),
+                    pc.cells = N / sum(N) * 100),
+              keyby = .(experiment,
+                        organ,
+                        treatment.agg,
+                        sex,
+                        batch)
+              ] %>% droplevels()
+
+
+percent_ct_df[, grp :=.GRP, by = .(experiment, organ, treatment.agg, celltype)]
+
+percent_ct_df[grp %in% (percent_ct_df[,sum(N) == 0, by = grp][V1 == TRUE, grp]),
+     pc.box := 100000]
+
+percent_ct_df[grp %in% (percent_ct_df[,sum(N) == 0, by = grp][V1 == FALSE, grp]),
+     pc.box := pc.cells]
+
+percent_ct_df$pc.box %>% is.na %>% sum(na.rm = T)
+(percent_ct_df$pc.box == 0) %>% sum(na.rm = T)
+(percent_ct_df$pc.box != 0) %>% sum(na.rm = T)
+
+# setnafill(percent_ct_df, fill = 0, cols = 'pc.cells')
+
+
+comp <- percent_ct_df[,treatment.agg] %>% 
+                levels %>% 
+                rev %>% 
+                combn(2, 
+                      FUN = paste,
+                      collapse = ";"
+                      )
+
+stats_list <- list()
+for(ct in unique(percent_ct_df$celltype)){
+  for(organx in unique(percent_ct_df$organ)){
+    for(expx in unique(percent_ct_df$experiment)){
+      for(compx in comp){
+        subsetx <- percent_ct_df %>% filter(treatment.agg %in% unlist(str_split(compx, ";")),
+                                 celltype == ct,
+                                 organ == organx,
+                                 experiment == expx)
+        
+          if(length(unique(subsetx$treatment.agg)) < 2) next
+          else if(length(unique(subsetx$sex)) < 2){
+            mod <- lm(pc.cells ~ treatment.agg, subsetx)
+          }
+          else mod <- lm(pc.cells ~ treatment.agg + sex, subsetx)
+        
+        stats <- summary(mod)$coefficient %>% as_tibble(rownames = "end")
+        
+        stats_fin <- stats %>% filter(grepl("WT|cKO|NoT", end))
+        stats_fin$end <- stats_fin$end %>% str_remove("treatment.agg")
+        colnames(stats_fin) <- colnames(stats_fin) %>% 
+          str_replace_all(" ", "_") %>% 
+          str_remove("\\.")
+        colnames(stats_fin)[5] <- "p_value"
+        
+        stats_list[[ct]][[organx]][[expx]][[compx]] <- stats_fin
       }
     }
   }
+}
   
-  res.stats <-
-    rbindlist(lapply(stats_list, function(l1) {
-      rbindlist(lapply(l1, function(l2) {
-        rbindlist(lapply(l2, function(l3) {
-            rbindlist(l3, idcol = "comparison")}), idcol = "experiment")
-      }), idcol = "organ")
-    }), idcol = "celltype")
-  res.stats$start <- res.stats$comparison %>% str_extract("\\w+$")
-  res.stats$comparison <- res.stats$comparison %>% str_replace(";", "_vs_")
-  res.stats$adj_p <- res.stats$p_value %>% p.adjust(method = "BH")
-  res.stats$label <- case_when(
-    res.stats$adj_p >= 0.1 ~ "NS",
-    between(res.stats$adj_p, 0.05, 0.1) ~ "*",
-    between(res.stats$adj_p, 0.01, 0.049) ~ "**",
-    res.stats$adj_p < 0.01 ~ "***"
-  )
+res.stats <-
+  rbindlist(lapply(stats_list, function(l1) {
+    rbindlist(lapply(l1, function(l2) {
+      rbindlist(lapply(l2, function(l3) {
+          rbindlist(l3, idcol = "comparison")}), idcol = "experiment")
+    }), idcol = "organ")
+  }), idcol = "celltype")
+
+res.stats[, c('start', 'comparison', 'adj_p', 'label') := {
+  start = str_extract(comparison, '\\w+$')
+  comparison = str_replace(comparison, ';', '_vs_')
+  adj_p = p.adjust(p_value, method = 'BH')
+  label = fcase(adj_p %between% c(0.05, 0.1) & adj_p != 0.1, '*',
+                adj_p %between% c(0.01, 0.05) & adj_p != 0.05, '**',
+                adj_p < 0.01, '***',
+                default = 'NS')
+  .(start, comparison, adj_p, label)
+  }]
 
   
-  y_values <-
-    percent_ct_df %>% group_by(experiment, organ, celltype, treatment.agg) %>% 
-    slice_max(n = 1, pc.cells) %>% 
-    tidyr::pivot_wider(
-      names_from = "treatment.agg",
-      values_from = "pc.cells",
-      id_cols = c("experiment", "organ", "celltype")
-    )
+y_values <- percent_ct_df[percent_ct_df[,
+                                        .I[which.max(pc.cells)],
+                                        by = .(experiment,
+                                               organ,
+                                               celltype,
+                                               treatment.agg)]$V1
+                          ][,
+                            dcast(.SD,
+                                  'experiment + organ + celltype ~ treatment.agg',
+                                  value.var = 'pc.cells')]
 
-  res.stats <-
-    left_join(res.stats, y_values, by = c("experiment", "organ", "celltype"))
+res.stats <-
+  left_join(res.stats, y_values, by = c("experiment", "organ", "celltype"))
+  
+
+fun <- function(x){
+  fcase(x$comparison == 'HDAC_cKO_vs_NoT', 
+        as.matrix(x[,13:15]) %>% rowMaxs * 1.3,
+        default = 1)
+}
+res.stats[,
+          position := {
+            pos <- fcase(comparison == 'HDAC_cKO_vs_NoT',
+                            as.matrix(.SD[,13:15]) %>% rowMaxs * 1.3,
+                            comparison == 'HDAC_cKO_vs_HDAC_WT',
+                            as.matrix(.SD[,14:15]) %>% rowMaxs * 1.15,
+                            comparison == 'HDAC_WT_vs_NoT',
+                            as.matrix(.SD[,13:14]) %>% rowMaxs * 1.085)
+            fifelse(pos < 3, pos + 3, pos)
+            }]
                                     
-  res.stats$position <- case_when(res.stats$start == "NoT" & res.stats$end == "HDAC_cKO" ~
-                                    res.stats[,13:15] %>% as.matrix %>%  rowMaxs * 1.3,
-                                  res.stats$start == "NoT" & res.stats$end == "HDAC_WT" ~
-                                    res.stats[,13:14] %>% as.matrix %>%  rowMaxs * 1.15,
-                                  TRUE ~
-                                    res.stats[,14:15] %>% as.matrix %>%  rowMaxs * 1.085)
-  res.stats$position <- case_when(res.stats$position < 3 ~ res.stats$position + 3,
-                                  TRUE ~ res.stats$position)
   
-  # stats <- res.stats %>% filter(label != "NS")
+  stats <- res.stats %>% filter(label != "NS")
   # stats$start <- c(3-0.4/3, 3-0.4/3, 5-0.4/3, 12-0.4/3, 16-0.4/3, 16-0.4/3, 16-0.4/3)
   # stats$end <- c(3+0.4/3, 3, 5+0.4/3, 12, 16+0.4/3, 16, 16)
   # stats$position <- stats$position/10
   
-  percent_ct_df %>% 
+  percent_ct_df[celltype %in% c('B cells',
+                               'Pre-plasmablasts',
+                               'Plasma cells',
+                               'GC B cells')] %>% 
           ggplot(aes(celltype, pc.cells)) +
-          geom_boxplot(aes(fill = treatment.agg), outlier.shape = NA, width = 0.4) +
-          geom_point(aes(group = treatment.agg, col = batch, shape = sex), size = 2, position = position_jitterdodge(jitter.width = 0.05, dodge.width = 0.4)) + 
-          geom_signif(data = stats,
-                      aes(xmin = start,
-                          xmax = end,
-                          annotations = label,
-                          y_position = position,
-                          ),
-                      show.legend = TRUE,
-                      manual = T) +
+          geom_boxplot(
+                       aes(fill = treatment.agg,
+                           y = pc.box), 
+                       outlier.shape = NA, 
+                       width = 0.8,
+                       position = position_dodge2(preserve = 'single')) +
+          geom_point(aes(group = treatment.agg, col = batch, shape = sex),
+                     size = 2, 
+                     position = position_jitterdodge(jitter.width = 0.3, 
+                                                     dodge.width = 0.8)) + 
+          # geom_signif(data = stats,
+          #             aes(xmin = start,
+          #                 xmax = end,
+          #                 annotations = label,
+          #                 y_position = position,
+          #                 ),
+          #             show.legend = TRUE,
+          #             manual = T) +
           scale_fill_grey(start = 0.4, name = "Treatment Group") +
           scale_shape_discrete(name = "Sex") +
           scale_color_discrete(name = "Batch") +
           scale_y_log10() +
-          facet_wrap(~ experiment + organ, ncol = 1) +
-          theme_my() + 
-          theme(strip.background = element_blank(),
-                strip.text = element_text(hjust = 0,
-                                          size = rel(1.5)),
-                axis.text.x = element_text(size = 20),
-                axis.text.y = element_text(size = 20),
-                legend.title = element_text(size = 20),
-                legend.text = element_text(size = 20)) +
+          facet_wrap(organ ~ experiment, ncol = 2) +
+          theme_my(strip.background = element_blank(),
+                   strip.text = element_text(hjust = 0,
+                                             size = rel(1.5)),
+                   axis.text.x = element_text(size = 20),
+                   axis.text.y = element_text(size = 20),
+                   legend.title = element_text(size = 20),
+                   legend.text = element_text(size = 20)
+                   ) +
           xlab("Celltype") +
-          ylab("% of Cells")
+          ylab("% of Cells") +
+          coord_cartesian(ylim = range(percent_ct_df$pc.cells, na.rm = T) + c(-.25, .25))
   
-  ggsave("pc.pdf", height = 9, width = 7.5, scale = 3)
+  # ggsave("pc.pdf", height = 9, width = 4.5, scale = 3)
   
-  # ggsave("laia_perc_ct.pdf", scale = 3.5)
+  ggsave("laia_perc_ct.pdf", height = 4.25, width = 5, scale = 3)
  
   
     ggplot(percent_ct_df) +

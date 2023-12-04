@@ -13,6 +13,7 @@ library(viridis)
 library(ggsignif)
 library(fst)
 library(readr)
+library(shinyjs)
 
 
 # Functions ---------------------------------------------------------------
@@ -110,6 +111,7 @@ plot_histo <- function(object) {
             geom_histogram(aes(P.Value, fill = factor(round(AveExpr))),
                            bins = 30) +
             facet_wrap(~ treatment) +
+            guides(fill = guide_legend("round(AveExpr)")) +
             theme_my(panel.grid.major = element_blank())
 }
                        
@@ -240,6 +242,10 @@ plot_gene_plot <- function(data, stats, gene) {
             manual = T,
             tip_length = 0
         ) +
+        coord_cartesian(ylim = c(min(data$NormExpr), 
+                                 fifelse(any(stats$label != 'NS'), 
+                                         max(stats$position) + 0.5,
+                                         max(data$NormExpr)))) +
         theme_my() +
         theme(
             panel.background = element_rect(fill = NA),
@@ -283,10 +289,10 @@ plot_fgsea <- function(df) {
 
 
 # Load Data ---------------------------------------------------------------
-dataDir <- ('../data')
+dataDir <- ('data')
 
 #load data
-design.res <- read_rds('design.rds')
+design.res <- read_rds(file.path(dataDir, 'design.rds'))
 setDT(design.res)
 
 # UI Section --------------------------------------------------------------
@@ -294,25 +300,22 @@ setDT(design.res)
 ui <- fluidPage(
     tags$head(tags$style(
         HTML(
-            "
-                .custom-well {
-                background-color: rgba(248, 248, 248, 0.85);
-                position: absolute;
-                z-index: 100;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                padding-top: 4px;
-                padding-bottom: 4px;
-                padding-left: 2.5px;
-                padding-right: 2.5px;
-                border-radius: 5px;
-                border: 1px solid
-                                }"
-        )
-    )),
-    
-    titlePanel("Volcano Plots"),
+        ".custom-well {
+        background-color: rgba(248, 248, 248, 0.85);
+        position: absolute;
+        z-index: 100;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        padding-left: 2.5px;
+        padding-right: 2.5px;
+        border-radius: 5px;
+        border: 1px solid
+        }"
+        ))),
+    titlePanel("DGE Plots"),
     fluidRow(
         sidebarPanel(width = 2,
                      h3("Plot Settings"),
@@ -321,7 +324,7 @@ ui <- fluidPage(
                          "Celltype:",
                          choices = unique(design.res$celltype),
                          multiple = FALSE
-                     ),
+                         ),
                      selectInput(
                          "organ",
                          "Organ:",
@@ -330,7 +333,7 @@ ui <- fluidPage(
                          multiple = FALSE,
                          selectize = FALSE,
                          size = 2
-                     ),
+                         ),
                      selectInput(
                          "experiment",
                          "Experiment:",
@@ -338,41 +341,41 @@ ui <- fluidPage(
                          multiple = FALSE,
                          selectize = FALSE,
                          size = 2
-                     ),
-                     sliderInput('expr_cut',
-                                 'AveExpr Cutoff:',
-                                 min = min(design.res$AveMin),
-                                 max = max(design.res$AveMax),
-                                 value = min(design.res$AveMin)),
-                     numericInput(
-                         "xintercept",
-                         "logFC threshold:",
-                         value = 1,
-                         min = 0.3,
-                         max = 3,
-                         step = 0.1
-                     ),
-                     textInput(
-                         "rn",
-                         "Highlight genes:",
-                         placeholder = "Gzma, Trac, Prf1"
-                     ),
+                         ),
+                     sliderInput(
+                         'expr_cut',
+                         'AveExpr Cutoff:',
+                         min = min(design.res$AveMin),
+                         max = max(design.res$AveMax),
+                         value = min(design.res$AveMin)
+                         ),
+                     useShinyjs(),
+                     hidden(
+                         numericInput(
+                             "xintercept",
+                             "logFC threshold:",
+                             value = 1,
+                             min = 0.3,
+                             max = 3,
+                             step = 0.1
+                             )
+                         ),
                      actionBttn(
                          "plotter",
                          "Generate",
                          color = "royal",
                          style = "fill",
                          block = T
-                     )
-        ),
+                         )
+                     ),
         column(10,
                tabsetPanel(
                    tabPanel(
                        "Volcano Plot",
                        column(
                            7,
-                           div(
-                               style = "position:relative",
+                           div(style = 'margin-top:10px'),
+                           div(style = "position:relative",
                                plotOutput(
                                    "Volcano_plot",
                                    brush = "plot_brush",
@@ -380,46 +383,94 @@ ui <- fluidPage(
                                                      delay = 10, 
                                                      delayType = "debounce"),
                                    click = "plot_click"
-                               ),
-                               uiOutput("hover_info")
+                                   ),
+                               uiOutput("hover_info"),
+                               div(style = 'border: 1px solid;
+                                            border-color: grey'),
+                               div(style = 'margin-top:7px'),
+                               column(12, 
+                                      column(6,
+                                             searchInput(
+                                                 "rn",
+                                                 "Highlight Gene:",
+                                                 placeholder = "Gzma, Trac, Prf1",
+                                                 btnSearch = icon("search"), 
+                                                 btnReset = icon("remove")
+                                                 )
+                                             ),
+                                      column(5, offset = 1,
+                                             downloadLink("save_plot",
+                                                          "Save Plot")
+                                             )
+                                      )
+                               )
                            ),
-                           verbatimTextOutput("brush_info",
-                                              placeholder = TRUE),
-                           radioButtons(
-                               "filetype",
-                               "Select filetype:",
-                               choices = c("pdf", "png"),
-                               selected = "pdf"
-                           ),
-                           downloadLink("save_plot",
-                                        "Save Plot")
-                       ),
                        column(
                            5,
+                           div(style = 'margin-top:10px'),
                            plotOutput("gene_plot"),
-                           column(5,
-                                  textInput("gene_input",
-                                            label = NULL,
-                                            placeholder = "Enter gene or click volcano plot")
-                           ), 
-                           column(2,
-                                  actionButton(
-                                      "plot_gene_input",
-                                      label = "plot gene")
-                           ),
+                           div(style = 'border: 1px solid;
+                                        border-color: grey'),
+                           div(style = 'margin-top:7px'),
                            column(12,
-                                  downloadLink("save_gene_plot",
-                                               "Save Plot"))
-                       )
+                                  column(6,
+                                         searchInput("gene_input",
+                                                     label = 'Plot Gene:',
+                                                     placeholder = "Enter gene or click volcano plot",
+                                                     btnSearch = icon('search'),
+                                                     btnReset = icon("remove")
+                                                     )
+                                         ),
+                                  column(5, 
+                                         offset = 1,
+                                         downloadLink("save_gene_plot",
+                                                      "Save Plot")
+                                         )
+                                  )
+                           )
                    ),
                    tabPanel('P-Value Histogram',
                             column(
-                                9,
+                                8,
                                 div(
                                     style = "position:relative",
                                     plotOutput('pval_histo')
                                 )
                             ),
+                            column(4,
+                                       column(12,
+                                       verbatimTextOutput('ave_list',
+                                                          placeholder = T)),
+                                   column(12,
+                                          column(2,
+                                                 actionBttn(
+                                                     inputId = "add_expr",
+                                                     label = NULL,
+                                                     style = "simple", 
+                                                     color = "success",
+                                                     size = 'xs',
+                                                     icon = icon("plus")
+                                                     )
+                                                 ),
+                                          column(2,
+                                                 actionBttn(
+                                                     inputId = "rem_expr",
+                                                     label = NULL,
+                                                     style = "simple", 
+                                                     color = "danger",
+                                                     size = 'xs',
+                                                     icon = icon("minus")
+                                                 )),
+                                          column(6, offset = 2,
+                                                 downloadBttn(
+                                                     'dl_expr',
+                                                     label = NULL,
+                                                     color = 'primary',
+                                                     style = "simple",
+                                                     size = 'xs'
+                                                 )
+                                                 ))
+                                   ),
                             column(12,
                                    downloadLink("save_pval",
                                                 "Save Plot"))
@@ -538,7 +589,7 @@ ui <- fluidPage(
 server <- function(input, output, session) {
     
     res_dat <- reactive({
-        res.pb <- read.fst(file.path("data",
+        res.pb <- read.fst(file.path(dataDir,
                                      paste0(
                                          input$celltype,
                                          "_",
@@ -565,7 +616,7 @@ server <- function(input, output, session) {
         )]
         
     }) %>% 
-        bindEvent(input$plotter)
+        bindEvent(input$plotter, input$rn)
     
     object <- reactive({
         x <- res_dat()[round(AveExpr) >= input$expr_cut]
@@ -581,11 +632,11 @@ server <- function(input, output, session) {
                                         experiment == input$experiment]
         
     }) %>%  
-        bindEvent(input$plotter)
+        bindEvent(input$plotter, input$rn)
     
     countsx <- reactive({
         read_fst(file.path(
-            "data",
+            dataDir,
             paste0(
                 "counts_",
                 input$celltype,
@@ -602,7 +653,7 @@ server <- function(input, output, session) {
     
     gene_id <- reactiveVal()
     
-    observeEvent(input$plot_click, {
+    observe({
         click <- input$plot_click
         point <-
             nearPoints(object(),
@@ -611,9 +662,10 @@ server <- function(input, output, session) {
                        maxpoints = 1)
         if(nrow(point) == 0) return(gene_id(NULL))
         gene_id(point$rn)
-    })
+    }) %>% 
+        bindEvent(input$plot_click)
     
-    observeEvent(input$plot_gene_input, {
+    observe({
         point <- str_to_sentence(unlist(str_split(
             str_remove_all(str_replace_all(input$gene_input,
                                            ";",
@@ -621,13 +673,14 @@ server <- function(input, output, session) {
                            " "),
             ","
         )))
-        if (str_count(point) == 0) return(gene_id(NULL))
         gene_id(point)
-    })
+    }) %>% 
+        bindEvent(req(input$gene_input))
     
-    observeEvent(input$plotter, {
+    observe({
         gene_id(NULL)
-    })
+    }) %>% 
+        bindEvent(input$plotter, input$gene_input_reset)
     
     gene_data <- reactive({
         gene <- gene_id()
@@ -657,9 +710,9 @@ server <- function(input, output, session) {
                 treatment == "WT_vs_ctrl",
                 1.075 * max(tmp[treatment %in% c("NoT", "WT"), NormExpr]),
                 treatment == "KO_vs_WT",
-                1.15 * max(tmp[treatment %in% c("WT", "cKO"), NormExpr]),
+                1.13 * max(tmp[treatment %in% c("WT", "cKO"), NormExpr]),
                 treatment == "KO_vs_ctrl",
-                1.24 * max(tmp[, NormExpr])
+                1.2 * max(tmp[, NormExpr])
             ),
             label = fcase(
                 adj.P.Val %between% c(0.01, 0.05),
@@ -675,7 +728,7 @@ server <- function(input, output, session) {
     }) %>%
         bindEvent(gene_id())
     
-    goi <- eventReactive(input$plotter, {
+    goi <- reactive({
         str_to_sentence(unlist(str_split(
             str_remove_all(str_replace_all(input$rn,
                                            ";",
@@ -683,13 +736,14 @@ server <- function(input, output, session) {
                            " "),
             ","
         )))
-    })
+    }) 
     
-    threshold <- eventReactive(input$plotter, {
+    threshold <- reactive({
         input$xintercept
-    })
+    }) %>% 
+        bindEvent(input$plotter, input$rn)
     
-    my_plot <- eventReactive(input$plotter, {
+    my_plot <- reactive({
         plot_volcano(object(),
                      intercept = threshold(),
                      highlight = goi()) + 
@@ -699,7 +753,8 @@ server <- function(input, output, session) {
                 input$experiment
             ))
         
-    })
+    }) %>% 
+        bindEvent(input$plotter, goi(), ignoreInit = TRUE)
     
     histo <- reactive({
         plot_histo(object()) +
@@ -717,16 +772,6 @@ server <- function(input, output, session) {
     
     output$pval_histo <- renderPlot({
         histo()
-    })
-    
-    output$brush_info <- renderPrint({
-        if (!is.null(input$plot_brush)) {
-            brush = brushedPoints(object(), input$plot_brush)
-
-            cat("Selected:\n",
-                paste(brush$rn, collapse = ", "))
-        }
-        
     })
 
     output$hover_info <- renderUI({
@@ -777,11 +822,7 @@ server <- function(input, output, session) {
             )
         },
         content = function(file) {
-            if (input$filetype == "png") {
-                png(file, width = 720)
-            } else{
-                pdf(file, width = 10)
-            }
+            pdf(file, width = 10)
             plot(my_plot())
             dev.off()
         }
@@ -845,15 +886,72 @@ server <- function(input, output, session) {
                               organ == input$organ & 
                               experiment == input$experiment]
         updateSliderInput(inputId = 'expr_cut',
-                          min = des[,AveMin],
-                          max = des[,AveMax],
-                          value = des[,AveVal])
-    }) %>%
-        bindEvent(input$celltype, input$organ, input$experiment)
+                          min = ifelse(nrow(des), des[,AveMin], NA),
+                          max = ifelse(nrow(des), des[,AveMax], NA),
+                          value = ifelse(nrow(des), des[,AveVal], NA))
+    }) 
+    # %>%
+    #     bindEvent(input$celltype, input$organ, input$experiment)
     
+    expr_list <- reactiveVal(data.table(celltype = character(),
+                                                organ = character(),
+                                                experiment = character(),
+                                                AveExpr = numeric()))
+    
+    
+    observe({
+        old <- expr_list()
+        if(is.null(input$expr_cut)) {
+            expr_list(old)
+        }else{
+        tmp <- old[celltype == input$celltype & 
+                       organ == input$organ &
+                       experiment == input$experiment]
+            if(nrow(tmp) > 0){
+                old <- old[!(celltype == input$celltype & 
+                                 organ == input$organ &
+                                 experiment == input$experiment)]
+                tmp$AveExpr <- input$expr_cut
+                expr_list(rbind(old, tmp))
+            } else{
+                expr_list(rbind(old, 
+                                data.table(
+                                    celltype = input$celltype,
+                                    organ = input$organ,
+                                    experiment = input$experiment,
+                                    AveExpr = input$expr_cut
+                                )))
+            }
+        }
+    }) %>% 
+        bindEvent(input$add_expr)
+    
+    observe({
+        old <- expr_list()
+        old <- old[!nrow(old)]
+        expr_list(old)
+    }) %>% 
+        bindEvent(input$rem_expr)
+    
+    
+    output$ave_list <- renderPrint(
+        expr_list()
+    )
+    
+    output$dl_expr <- downloadHandler(
+        filename = function(){
+            paste0('AveExpr_cutoffs_', Sys.Date(), '.csv')
+        },
+        content = function(con){
+            fwrite(expr_list(), con)
+        }
+    )
     
     my_table <- reactive({
         x <- brushedPoints(object(), input$plot_brush)
+        if(nrow(x) == 0){
+            x <- object()
+        }
         x[, .(gene_name = rn,
               logFC = formatC(logFC, digits = 3),
               p_value = P.Value,
@@ -908,7 +1006,7 @@ server <- function(input, output, session) {
                 )
             )
             
-            res <- read.fst(file.path("data",
+            res <- read.fst(file.path(dataDir,
                                       "list_for_shiny.fst"),
                             as.data.table = TRUE)[direction2 == "up" &
                                                       celltype %in% input$ct_enr &
@@ -962,7 +1060,7 @@ server <- function(input, output, session) {
             paths <-
                 sapply(input$databases, cacheGenesets)
             
-            res <- read.fst(file.path("data",
+            res <- read.fst(file.path(dataDir,
                                       "list_for_shiny.fst"),
                             as.data.table = TRUE)[celltype %in% input$ct_enr &
                                                       organ %in% input$organ_enr &
