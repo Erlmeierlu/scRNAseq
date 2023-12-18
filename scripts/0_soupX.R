@@ -10,13 +10,14 @@ library(foreach)
 library(readr)
 
 #setting up directories
-vDir <- ("/vscratch/scRNAseq")
-rawDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/raw_data/scRNA_from_BSF/COUNT")
-plotsDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/plots")
-tablesDir <- file.path(vDir, "tables")
-oldDir <- file.path(vDir, "data/old")
-dataDir <- ("data")
-resDir <- ("results")
+gfsDir <- 'media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin'
+rawDir <- file.path(gfsDir, 'raw_data/scRNA_from_BSF/COUNT')
+plotsDir <- file.path(gfsDir, 'plots')
+tablesDir <- file.path(gfsDir, 'tables')
+oldDir <- "/vscratch/scRNAseq/data/old"
+shinyDir <- 'dge-app'
+dataDir <-"data"
+resDir <- "results"
 
 #directories to loop over
 fileDirs <- list()

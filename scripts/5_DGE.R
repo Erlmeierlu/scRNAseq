@@ -40,13 +40,13 @@ theme_my <- function(...) {
 }
 
 #setting up directories
-vDir <- ("/vscratch/scRNAseq")
-plotsDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/plots")
-tablesDir <- file.path(vDir, "tables")
-oldDir <- file.path(vDir, "data/old")
-shinyDir <- ('dge-app')
-dataDir <-("data")
-resDir <- ("results")
+gfsDir <- '/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin'
+plotsDir <- file.path(gfsDir, 'plots')
+tablesDir <- file.path(gfsDir, 'tables')
+oldDir <- "/vscratch/scRNAseq/data/old"
+shinyDir <- 'dge-app'
+dataDir <-"data"
+resDir <- "results"
 
 # Load Data ---------------------------------------------------------------
 
@@ -494,21 +494,23 @@ res.stats[,
   # stats$end <- c(3+0.4/3, 3, 5+0.4/3, 12, 16+0.4/3, 16, 16)
   # stats$position <- stats$position/10
   
-  percent_ct_df[celltype %in% c('B cells',
-                               'Pre-plasmablasts',
-                               'Plasma cells',
-                               'GC B cells')] %>% 
+  point_data <- copy(percent_ct_df)
+  point_data[,pc.cells := fcase(pc.box == 100000, 100000, rep(TRUE, .N), pc.cells)]
+  
+  percent_ct_df %>% 
           ggplot(aes(celltype, pc.cells)) +
           geom_boxplot(
                        aes(fill = treatment.agg,
                            y = pc.box), 
                        outlier.shape = NA, 
-                       width = 0.8,
+                       width = 0.75,
                        position = position_dodge2(preserve = 'single')) +
-          geom_point(aes(group = treatment.agg, col = batch, shape = sex),
+          geom_point(data = point_data[pc.cells != 0],
+                     aes(group = treatment.agg, col = batch, shape = sex),
                      size = 2, 
+                     alpha = 0.8,
                      position = position_jitterdodge(jitter.width = 0.3, 
-                                                     dodge.width = 0.8)) + 
+                                                     dodge.width = 0.75)) + 
           # geom_signif(data = stats,
           #             aes(xmin = start,
           #                 xmax = end,
@@ -523,8 +525,8 @@ res.stats[,
           scale_y_log10() +
           facet_wrap(organ ~ experiment, ncol = 2) +
           theme_my(strip.background = element_blank(),
-                   strip.text = element_text(hjust = 0,
-                                             size = rel(1.5)),
+                   strip.text.x = element_text(hjust = 0,
+                                             size = 20),
                    axis.text.x = element_text(size = 20),
                    axis.text.y = element_text(size = 20),
                    legend.title = element_text(size = 20),
@@ -534,27 +536,27 @@ res.stats[,
           ylab("% of Cells") +
           coord_cartesian(ylim = range(percent_ct_df$pc.cells, na.rm = T) + c(-.25, .25))
   
-  # ggsave("pc.pdf", height = 9, width = 4.5, scale = 3)
+  ggsave(file.path(plotsDir, "pc.pdf"), height = 5, width = 9, scale = 3)
   
-  ggsave("laia_perc_ct.pdf", height = 4.25, width = 5, scale = 3)
+  # ggsave("laia_perc_ct.pdf", height = 4.25, width = 5, scale = 3)
  
+#   
+#     ggplot(percent_ct_df) +
+#       geom_jitter(aes(treatment.agg, pc.cells, col = batch, shape = sex), height = 0, width = 0.2) +
+#       facet_grid(celltype~experiment+organ, switch = "x", scales = "free_y") + 
+#       geom_signif(data = res.stats %>% filter(label != "NS"),
+#                   aes(xmin = start, 
+#                       xmax = end, 
+#                       annotations = label,
+#                       y_position = position),
+#                   show.legend = TRUE,
+#                   step_increase = 2,
+#                   vjust = 0.5,
+#                   manual = T) +
+#     theme_my() +
+#     theme(strip.placement = "outside")
+# 
+#   
+# ggsave(file.path(plotsDir, "perc_ct_sig.pdf"), height = 45)
   
-    ggplot(percent_ct_df) +
-      geom_jitter(aes(treatment.agg, pc.cells, col = batch, shape = sex), height = 0, width = 0.2) +
-      facet_grid(celltype~experiment+organ, switch = "x", scales = "free_y") + 
-      geom_signif(data = res.stats %>% filter(label != "NS"),
-                  aes(xmin = start, 
-                      xmax = end, 
-                      annotations = label,
-                      y_position = position),
-                  show.legend = TRUE,
-                  step_increase = 2,
-                  vjust = 0.5,
-                  manual = T) +
-    theme_my() +
-    theme(strip.placement = "outside")
-
-  
-ggsave(file.path(plotsDir, "perc_ct_sig.pdf"), height = 45)
-  
-write.csv(percent_ct_df , file.path(tablesDir,"stats_list.csv"), row.names = F)
+# write.csv(percent_ct_df , file.path(tablesDir,"stats_list.csv"), row.names = F)

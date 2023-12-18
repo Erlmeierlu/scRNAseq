@@ -15,7 +15,6 @@ library(fst)
 library(readr)
 library(shinyjs)
 
-
 # Functions ---------------------------------------------------------------
 #personal theme
 theme_my <- function(...) {
@@ -189,8 +188,26 @@ plot_volcano <- function(object,
     
 }
 
-plot_enr <- function(df) {
+enrichr_plot <- function(df){
     
+    df[, Count := str_count(Genes, ';') + 1]
+    df <- df[Count > 2]
+    df <- df[seq(min(nrow(df), 20)), ]
+    ggplot(df, aes(GeneRatio, 
+                   Term)) +
+        geom_segment(aes(y = Term, yend = Term, x = min(GeneRatio), xend = GeneRatio)) +
+        geom_point(aes(fill = -log10(Adjusted.P.value),
+                       size = Count),
+                   shape = 21) + 
+        theme_my(panel.grid.major = element_blank()) +
+        scale_fill_viridis() +
+        scale_size_continuous(guide = guide_legend(override.aes = list(fill = 'black')),
+                              breaks = ~unique(round(pretty(.))))
+    
+}
+
+plot_enr <- function(df) {
+
     ggplot(df, aes(treatment, Term)) +
         geom_point(aes(
             col = log(Odds.Ratio),
@@ -213,7 +230,8 @@ plot_enr <- function(df) {
         )
 }
 
-plot_gene_plot <- function(data, stats, gene) {
+plot_gene_plot <- function(data, stats, gene, expr) {
+    def_breaks <- labeling::extended(min(data$NormExpr), max(data$NormExpr), m = 5)
     ggplot(data, aes(treatment, NormExpr)) +
         geom_boxplot(
             size = 0.5,
@@ -230,7 +248,8 @@ plot_gene_plot <- function(data, stats, gene) {
             col = "black",
             show.legend = c(shape = T)
         ) +
-        scale_shape_manual(values = c(21, 24)) +
+        scale_shape_manual(values = c(21, 24),
+                           guide = guide_legend(order = 0)) +
         geom_signif(
             data = stats[label != "NS"],
             aes(
@@ -245,7 +264,8 @@ plot_gene_plot <- function(data, stats, gene) {
         coord_cartesian(ylim = c(min(data$NormExpr), 
                                  fifelse(any(stats$label != 'NS'), 
                                          max(stats$position) + 0.5,
-                                         max(data$NormExpr)))) +
+                                         max(data$NormExpr)))
+                        ) +
         theme_my() +
         theme(
             panel.background = element_rect(fill = NA),
@@ -268,7 +288,16 @@ plot_gene_plot <- function(data, stats, gene) {
             option = "H",
             begin = 0.2,
             end = 1
-        ) 
+        ) +
+        geom_hline(aes(yintercept = expr,
+                       linetype = factor(round(expr, 2))),
+                   alpha = 0.8, 
+                   color = 'salmon') + 
+        scale_linetype_manual(name = "AveExpr",
+                              values = 2,
+                              guide = guide_legend(override.aes = list(alpha = 1,
+                                                                       shape = NA),
+                                                   order = NA))
 }
 
 plot_fgsea <- function(df) {
@@ -602,7 +631,13 @@ server <- function(input, output, session) {
                            as.data.table = TRUE
         )
         
-        res.pb[, ":="(
+    }) %>% 
+        bindEvent(input$plotter, input$rn)
+    
+    object <- reactive({
+        x <- res_dat()[round(AveExpr) >= input$expr_cut]
+        x[, adj.P.Val := p.adjust(P.Value, method = 'BH')]
+        x[, ":="(
             direction2 =
                 fcase(
                     logFC > threshold() & adj.P.Val < 0.05,
@@ -614,13 +649,6 @@ server <- function(input, output, session) {
                 ),
             p_transformed = -log10(P.Value)
         )]
-        
-    }) %>% 
-        bindEvent(input$plotter, input$rn)
-    
-    object <- reactive({
-        x <- res_dat()[round(AveExpr) >= input$expr_cut]
-        x[, adj.P.Val := p.adjust(P.Value, method = 'BH')]
         x
     }) %>% 
         bindEvent(req(res_dat()))
@@ -724,7 +752,9 @@ server <- function(input, output, session) {
                 default = "NS"
             )
         )]
-        return(list(data = data, stats = stats, gene = gene))
+        
+        expr <- unique(stats$AveExpr)
+        return(list(data = data, stats = stats, gene = gene, expr = expr))
     }) %>%
         bindEvent(gene_id())
     
@@ -830,7 +860,7 @@ server <- function(input, output, session) {
     
     my_gene_plot <- reactive({
         
-        plot_gene_plot(gene_data()$data, gene_data()$stats, gene_data()$gene)
+        plot_gene_plot(gene_data()$data, gene_data()$stats, gene_data()$gene, gene_data()$expr)
         
     }) %>% 
         bindEvent(req(gene_data()))
@@ -952,9 +982,11 @@ server <- function(input, output, session) {
         if(nrow(x) == 0){
             x <- object()
         }
-        x[, .(gene_name = rn,
+        x[, .(comparison = treatment,
+              gene_name = rn,
               logFC = formatC(logFC, digits = 3),
-              p_value = P.Value,
+              AveExpr = formatC(AveExpr, format = 'fg'),
+              # p_value = P.Value,
               adjusted_pval = adj.P.Val,
               direction2)] 
     })
@@ -962,7 +994,8 @@ server <- function(input, output, session) {
     output$table <- renderDataTable({
         formatSignif(
             datatable(my_table()[, direction2 := NULL]),
-            columns = c("p_value",
+            columns = c(
+                # "p_value",
                         "adjusted_pval"),
             digits = 2
         )
@@ -998,6 +1031,15 @@ server <- function(input, output, session) {
             res <- rbindlist(res, idcol = "Database")
             cols <- grep("Old", names(res))
             res <- res[, !..cols][order(Adjusted.P.value)]
+            res[, GeneRatio := vapply(Overlap, 
+                                      function(x) {
+                                          eval(parse(text = x))
+                                      },
+                                      double(1), 
+                                      USE.NAMES = F)]
+            res[, Term := factor(Term, levels = Term[order(GeneRatio)])]
+
+            
         } else if (input$enr_method == "enrichR") {
             showModal(
                 modalDialog(
@@ -1135,9 +1177,10 @@ server <- function(input, output, session) {
         2.5 + 5.5 * length(unique(res_enrich()$Database))
     })
     
+
     my_enrich <- reactive({
         if (!input$advanced) {
-            plotEnrich(res_enrich()) + theme_my()
+            enrichr_plot(res_enrich())
         } else if (input$enr_method == "enrichR") {
             plot_enr(res_enrich())
         } else {
@@ -1160,7 +1203,7 @@ server <- function(input, output, session) {
         },
         content = function(file) {
             if (!input$advanced) {
-                pdf(file)
+                pdf(file, width = 14)
             } else if (input$enr_method == "enrichR") {
                 pdf(file,
                     width = plot_width(),

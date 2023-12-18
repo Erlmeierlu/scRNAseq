@@ -4317,20 +4317,28 @@
     },
     "rvest": {
       "Package": "rvest",
-      "Version": "1.0.0",
-      "Source": "Repository",
-      "Repository": "RSPM",
+      "Version": "1.0.3.9000",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteUsername": "tidyverse",
+      "RemoteRepo": "rvest",
+      "RemoteRef": "main",
+      "RemoteSha": "0cda79b4671bab46ba5717c8658ff81030091281",
       "Requirements": [
         "R",
+        "cli",
+        "glue",
         "httr",
         "lifecycle",
         "magrittr",
         "rlang",
         "selectr",
         "tibble",
+        "withr",
         "xml2"
       ],
-      "Hash": "74b905b0076e1de6e27f540c95ba68d5"
+      "Hash": "42f33a97b44ca21cd0114e8b8a2754dd"
     },
     "sass": {
       "Package": "sass",

@@ -40,12 +40,13 @@ theme_my <- function() {
 }
 
 #setting up directories
-vDir <- ("/vscratch/scRNAseq")
-plotsDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/plots")
-tablesDir <- file.path(vDir, "tables")
-oldDir <- file.path(vDir, "data/old")
-dataDir <-("data")
-resDir <- ("results")
+gfsDir <- '/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin'
+plotsDir <- file.path(gfsDir, 'plots')
+tablesDir <- file.path(gfsDir, 'tables')
+oldDir <- "/vscratch/scRNAseq/data/old"
+shinyDir <- 'dge-app'
+dataDir <-"data"
+resDir <- "results"
 
 # Load Data ---------------------------------------------------------------
 
@@ -299,3 +300,76 @@ monocle.obj@colData$ct_cluster <-
          levels = levels(freq_list$ct_cluster))
 
 write_rds(monocle.obj, file.path(dataDir, "3_annotated_monocle.cds"))
+
+
+# Subclustering -----------------------------------------------------------
+
+monocle.obj <- read_rds(file.path(dataDir, "3_annotated_monocle.cds"))
+
+t_subst <- choose_cells(monocle.obj)
+t_subst <- cluster_cells(t_subst, resolution = 0.0005)
+
+write_rds(t_subst, file.path(dataDir, '3_t_subset.cds'))
+
+b_subst <- choose_cells(monocle.obj)
+b_subst <- cluster_cells(b_subst, resolution = 0.00009)
+
+write_rds(b_subst, file.path(dataDir, '3_b_subset.cds'))
+
+
+# Ref Data for T subsets --------------------------------------------------
+
+th_express <- fread(file.path(tablesDir, 'data-2.csv'))[,-1]
+th_express <- as.data.frame(th_express)
+rownames(th_express) <- th_express$gene_symbol
+th_express <- as.matrix(th_express[,-1])
+
+th_express <- as(th_express, 'sparseMatrix')
+
+
+# Integrating New Clusters back into data ---------------------------------
+
+monocle.obj <- read_rds(file.path(dataDir, "3_annotated_monocle.cds"))
+t_subset <- read_rds(file.path(dataDir, '3_t_subset.cds'))
+
+increase_fac <- function(factor, increase){
+  names <- names(factor)
+  values <- unname(factor) %>% as.numeric
+  values <- values + increase
+  factor(setNames(values, names))
+}
+
+t_subset@clusters@listData$UMAP$clusters <- increase_fac(clusters(t_subset), 69)
+
+comb_factors <- function(factor1, factor2){
+  names <- c(names(factor1), names(factor2))
+  fact <- forcats::fct_c(factor1, factor2) %>% droplevels
+  
+  names(fact) <- names
+  fact
+}
+monocle.obj@clusters$UMAP$clusters <- 
+  comb_factors(monocle.obj@clusters$UMAP$clusters[!names(monocle.obj@clusters$UMAP$clusters) %in% names(clusters(t_subset))],
+             clusters(t_subset))
+
+monocle.obj@clusters$UMAP$clusters <- 
+  monocle.obj@clusters$UMAP$clusters[match(colnames(monocle.obj), names(monocle.obj@clusters$UMAP$clusters))]
+
+tab <- monocle.obj %>% clusters %>% unname %>% table
+r <- rank(-tab, ties.method = 'first')
+levels(monocle.obj@clusters$UMAP$clusters) <- unname(r) 
+
+b_subset <- read_rds(file.path(dataDir, '3_b_subset.cds'))
+
+b_subset@clusters@listData$UMAP$clusters <- increase_fac(clusters(b_subset), 69)
+
+monocle.obj@clusters$UMAP$clusters <- 
+  comb_factors(monocle.obj@clusters$UMAP$clusters[!names(monocle.obj@clusters$UMAP$clusters) %in% names(clusters(b_subset))],
+               clusters(b_subset))
+
+monocle.obj@clusters$UMAP$clusters <- 
+  monocle.obj@clusters$UMAP$clusters[match(colnames(monocle.obj), names(monocle.obj@clusters$UMAP$clusters))]
+
+tab <- monocle.obj %>% clusters %>% unname %>% table
+r <- rank(-tab, ties.method = 'first')
+levels(monocle.obj@clusters$UMAP$clusters) <- unname(r) 

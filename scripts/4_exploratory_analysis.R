@@ -38,12 +38,13 @@ theme_my <- function() {
 }
 
 #setting up directories
-vDir <- ("/vscratch/scRNAseq")
-plotsDir <- ("/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin/plots")
-tablesDir <- file.path(vDir, "tables")
-oldDir <- file.path(vDir, "data/old")
-dataDir <-("data")
-resDir <- ("results")
+gfsDir <- '/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin'
+plotsDir <- file.path(gfsDir, 'plots')
+tablesDir <- file.path(gfsDir, 'tables')
+oldDir <- "/vscratch/scRNAseq/data/old"
+shinyDir <- 'dge-app'
+dataDir <-"data"
+resDir <- "results"
 
 
 # Load Data ---------------------------------------------------------------
