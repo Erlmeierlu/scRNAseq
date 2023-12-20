@@ -1037,6 +1037,11 @@ server <- function(input, output, session) {
                                       },
                                       double(1), 
                                       USE.NAMES = F)]
+            
+            if(any(duplicated(res$Term))){
+                res[duplicated(Term), Term := paste(Term, Database, sep = '_')]
+            }
+            
             res[, Term := factor(Term, levels = Term[order(GeneRatio)])]
 
             
@@ -1053,11 +1058,14 @@ server <- function(input, output, session) {
                             as.data.table = TRUE)[direction2 == "up" &
                                                       celltype %in% input$ct_enr &
                                                       organ %in% input$organ_enr &
-                                                      experiment %in% input$exp_enr][, .(rn = paste(rn, collapse = ",")),
-                                                                                     by = .(celltype,
-                                                                                            organ,
-                                                                                            experiment,
-                                                                                            treatment)]
+                                                      experiment %in% input$exp_enr
+                                                  ][, 
+                                                    .(rn = paste(rn, collapse = ",")),
+                                                    by = .(celltype,
+                                                           organ,
+                                                           experiment,
+                                                           treatment)
+                                                    ]
             
             res[, ":=" (tmp = lapply(str_split(res$rn, ","),
                                      function(x) {

@@ -373,3 +373,41 @@ contributions[, by = .(organ, experiment, treatment),
 
 ggsave(file.path(plotsDir, 'contributions.pdf'),
        width = 10, height = 7)
+
+#save all the plots
+lapply(seq_along(cc_res), function(x, a, b){
+  name <- str_remove_all(b[x], '^cellchat_|.rds$')
+  
+  lapply(seq_along(a[[x]]$pathway_plots), function(y, n, m){
+    
+    if(is.null(n[[y]])) return(NULL)
+    pdf(file.path(plotsDir, paste(m[y], name, 'pathway_plot.pdf', sep = '_')))
+    print(n[[y]])
+    dev.off()
+    
+  }, n = a[[x]]$pathway_plots, m = names(a[[x]]$pathway_plots))
+  
+  
+  pdf(file.path(plotsDir, paste(name, 'celltype_plot.pdf', sep = '_')),
+      width = 16, height = 14)
+  print(a[[x]]$celltype_plots)
+  dev.off()
+  
+  lapply(seq_along(a[[x]]$pathway_heatmaps), function(i, c, d){
+    
+    if(is.null(c[[i]])) return(NULL)
+    pdf(file.path(plotsDir, paste(d[i], name, 'pathway_heatmap.pdf', sep = '_')))
+    print(c[[i]])
+    dev.off()
+  }, c = a[[x]]$pathway_heatmaps, d = names(a[[x]]$pathway_heatmaps))
+  
+  lapply(seq_along(a[[x]]$contribution_plots), function(j, e, f){
+    
+    if(is.null(e[[j]])) return(NULL)
+    pdf(file.path(plotsDir, paste(f[j], name, 'contribution_plots.pdf', sep = '_')))
+    print(e[[j]])
+    dev.off()
+    
+  }, e = a[[x]]$contribution_plots, f = names(a[[x]]$contribution_plots))
+  
+}, a = cc_res, b = names(cc_res))
