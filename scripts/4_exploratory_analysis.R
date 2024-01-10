@@ -846,27 +846,27 @@ rename_barcodes <- function(object){
 
 UMAP_projection <- rename_barcodes(UMAP_projection)
 
-write.csv(UMAP_projection, file = file.path(tablesDir, "UMAP-Projection-Nov-2023.csv"), quote = F, row.names = F)
+write.csv(UMAP_projection, file = file.path(tablesDir, "UMAP-Projection-Jan-2024.csv"), quote = F, row.names = F)
 
 graph_based <- monocle.obj@colData %>% as_tibble(rownames = "Barcode") %>% dplyr::select(Barcode, ct_cluster)
-graph_based$Nov2023 <- paste("Cluster", graph_based$ct_cluster)
+graph_based$Jan2024 <- paste("Cluster", graph_based$ct_cluster)
 graph_based <- graph_based %>% dplyr::select(-ct_cluster)
 
 graph_based <- rename_barcodes(graph_based)
 
-write.csv(graph_based, file = file.path(tablesDir, "Graph-Based-Nov-2023.csv"), quote = F, row.names = F)
+write.csv(graph_based, file = file.path(tablesDir, "Graph-Based-Jan-2024.csv"), quote = F, row.names = F)
 
 treatments <- monocle.obj@colData %>% as_tibble(rownames = "Barcode") %>% dplyr::select(Barcode, treatment.agg)
 
 treatments <- rename_barcodes(treatments)
 
-write.csv(treatments, file = file.path(tablesDir, "Treatments-Nov-2023.csv"), row.names = F)
+write.csv(treatments, file = file.path(tablesDir, "Treatments-Jan-2024.csv"), row.names = F)
 
 experiments <- monocle.obj@colData %>% as_tibble(rownames = "Barcode") %>% dplyr::select(Barcode, experiment)
 
 experiments <- rename_barcodes(experiments)
 
-write.csv(experiments, file = file.path(tablesDir, "experiments-Nov-2023.csv"), row.names = F)
+write.csv(experiments, file = file.path(tablesDir, "experiments-Jan-2024.csv"), row.names = F)
 
 exp_treat <- inner_join(experiments,treatments) %>%
     mutate(exp_treat = paste(experiment,
@@ -874,6 +874,6 @@ exp_treat <- inner_join(experiments,treatments) %>%
                              sep = "_")) %>%
     dplyr::select(Barcode, exp_treat)
 
-write.csv(exp_treat, file = file.path(tablesDir, "exp-treat-Nov-2023.csv"), row.names = F)
+write.csv(exp_treat, file = file.path(tablesDir, "exp-treat-Jan-2024.csv"), row.names = F)
 
 

@@ -58,7 +58,7 @@ monocle.obj <- read_rds(file.path(dataDir, "3_annotated_monocle.cds"))
 
 ### Create Pseudo Bulk ------------------------------------------------------
 make_pseudobulk <-
-  function(cds, cell_groups, func = c('sum', 'mean')) {
+  function(cds, cell_groups, func = c('mean', 'sum')) {
     group_df <- cds@colData[, cell_groups] %>%
       subset(treatment.agg != "Undefined") %>%
       data.frame() %>%
@@ -108,11 +108,11 @@ countsx <- make_pseudobulk(monocle.obj,
 designx <- make_designmat(monocle.obj, countsx)
 
 write_rds(countsx, file = file.path(dataDir, "counts_pseudobulk.rds"))
-write_rds(designx, file = file.path(dataDir, "design_pseudobulk.rds"))
+write_rds(designx, file = file.path(shinyDir, "data/design_pseudobulk.rds"))
 
 ### Limma -------------------------------------------------------------------
 
-designx <- readRDS(file.path(dataDir, "design_pseudobulk.rds"))
+designx <- readRDS(file.path(shinyDir, "data/design_pseudobulk.rds"))
 countsx <- readRDS(file.path(dataDir, "counts_pseudobulk.rds"))
 
 results.DGE.pseudo <- list()
@@ -273,7 +273,7 @@ design <- res[,
                         )]
 
 
-write_rds(design, file.path(shinyDir, 'design.rds'))
+write_rds(design, file.path(shinyDir, 'data/design.rds'))
 
 # P_val Histos ------------------------------------------------------------
 

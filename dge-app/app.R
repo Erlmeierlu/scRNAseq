@@ -14,6 +14,7 @@ library(ggsignif)
 library(fst)
 library(readr)
 library(shinyjs)
+# library(shiny.emptystate)
 
 # Functions ---------------------------------------------------------------
 #personal theme
@@ -346,6 +347,7 @@ ui <- fluidPage(
         ))),
     titlePanel("DGE Plots"),
     fluidRow(
+        # use_empty_state(),
         sidebarPanel(width = 2,
                      h3("Plot Settings"),
                      selectizeInput(
@@ -616,8 +618,16 @@ ui <- fluidPage(
 # Server Section ----------------------------------------------------------
 
 server <- function(input, output, session) {
+    # empty_state_content <- div(
+    #     "This is  example empty state content"
+    # )
+    # empty_state_manager <- EmptyStateManager$new(
+    #     id = 'Volcano_plot',
+    #     html_content = empty_state_content
+    # )
     
     res_dat <- reactive({
+        tryCatch(
         res.pb <- read.fst(file.path(dataDir,
                                      paste0(
                                          input$celltype,
@@ -629,11 +639,14 @@ server <- function(input, output, session) {
                                          
                                      )),
                            as.data.table = TRUE
-        )
+        ),
+        error=function(e) {
+            return(NULL)
+        })
         
     }) %>% 
-        bindEvent(input$plotter, input$rn)
-    
+        bindEvent(input$plotter, input$rn, ignoreInit = T)
+
     object <- reactive({
         x <- res_dat()[round(AveExpr) >= input$expr_cut]
         x[, adj.P.Val := p.adjust(P.Value, method = 'BH')]
@@ -743,13 +756,14 @@ server <- function(input, output, session) {
                 1.2 * max(tmp[, NormExpr])
             ),
             label = fcase(
+                abs(logFC) < threshold(), 'NS',
                 adj.P.Val %between% c(0.01, 0.05),
                 "*",
                 adj.P.Val %between% c(0.001, 0.01),
                 "**",
                 adj.P.Val < 0.001,
                 "***",
-                default = "NS"
+                default = 'NS'
             )
         )]
         

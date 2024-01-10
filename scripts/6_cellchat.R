@@ -3,12 +3,14 @@ library(ggplot2)
 library(dplyr)
 library(SingleCellExperiment)
 library(CellChat)
+library(NMF)
 library(Seurat)
 library(readr)
 library(data.table)
 library(stringr)
 library(foreach)
 library(viridis)
+library(ggalluvial)
 
 #personal theme
 theme_my <- function(...) {
@@ -137,15 +139,15 @@ cc_dat[, keyby = .(source, target, organ, experiment, treatment),
 
 
 cc_dat %>%
-    ggplot(aes(source, target, fill = summarized_interactions), na.value = 'lightgrey') +
-    geom_tile() +
+    ggplot(aes(source, target, fill = summarized_interactions)) +
+    geom_tile(col = 'ivory2') +
     facet_grid(organ + experiment ~ treatment, scales = 'free', space = 'free') +
     theme_my(panel.grid.major = element_blank(),
              panel.background = element_rect(fill = 'grey83')) +
     scale_fill_viridis(option = 'F')
 
 ggsave(file.path(plotsDir, 'ligand_receptor_interactions_count.pdf'),
-       width = 11, height = 9.5)
+       width = 12, height = 10.5)
 
 
 #Filter + calculate pathway interaction count difference between data frames 
@@ -167,16 +169,16 @@ cc_dat[, dcast(.SD, source + pathway_name + organ + experiment ~ treatment,
                 value.name = 'interaction_count_difference')
            ] %>% 
     ggplot() +
-    geom_tile(aes(source, pathway_name, fill = interaction_count_difference)) +
+    geom_tile(aes(source, pathway_name, fill = interaction_count_difference),
+              col = 'black') +
     facet_grid(experiment + organ ~ comparison,
                scales = 'free', 
                space = 'free') +
-    theme_my(panel.grid.major = element_blank(),
-             panel.background = element_rect(fill = 'grey83')) +
-    scale_fill_viridis(option = 'A')
+    theme_my(panel.background = element_rect(fill = 'white')) +
+    scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
 
 ggsave(file.path(plotsDir, 'source_interactions_pathways_per_comparison.pdf'),
-       width = 14, height = 17)
+       width = 15, height = 19)
 
 
 #Filter + calculate pathway interaction count difference between data frames 
@@ -198,58 +200,54 @@ cc_dat[, dcast(.SD, target + pathway_name + organ + experiment ~ treatment,
              value.name = 'interaction_count_difference')
       ] %>% 
           ggplot() +
-          geom_tile(aes(target, pathway_name, fill = interaction_count_difference)) +
+          geom_tile(aes(target, pathway_name, fill = interaction_count_difference),
+                    col = 'black') +
           facet_grid(experiment + organ ~ comparison,
                      scales = 'free', 
                      space = 'free') +
-          theme_my(panel.grid.major = element_blank(),
-                   panel.background = element_rect(fill = 'grey83')) +
-          scale_fill_viridis(option = 'A')
+          theme_my(panel.background = element_rect(fill = 'white')) +
+          scale_fill_gradient2(low = 'blue', mid = 'white', high = 'red')
 
 ggsave(file.path(plotsDir, 'target_interactions_pathways_per_comparison.pdf'),
-       width = 14, height = 18)
+       width = 15, height = 21)
 
 
 
 
 # Cellchat Analysis -------------------------------------------------------
-
+dev.noerror <- function(){
+  tryCatch(dev.off(),
+           error = function(e){
+             TRUE
+           })
+}
 
 files <- list.files('/vscratch/scRNAseq/data/', pattern = 'cellchat')
 
 cc_analysis <- function(object, pathways, thresh = 0.05){
   
+  org <- object@meta$organ %>% unique
+  exp <- object@meta$experiment %>% unique
+  con <- object@meta$treatment.agg %>% unique
+  
+  message(paste(org, exp, con, '--------|', sep = '--'))
+  
+  dev.noerror()
     pathway_plots <- sapply(pathways,
                     function(x) {
-                        
-                        ###THIS PART IS FROM THE FUNCTION netVisual_aggregate
-                        ###TO SKIP IF THERE IS NO SIG PATHWAY INSTEAD OF STOPPING
-                        pairLR <- searchPair(signaling = x, 
-                                             pairLR.use = object@LR$LRsig, 
-                                             key = "pathway_name", 
-                                             matching.exact = T, 
-                                             pair.only = T)
-                        net <- object@net 
-                        pairLR.use.name <- dimnames(net$prob)[[3]]
-                        pairLR.name <- intersect(rownames(pairLR), pairLR.use.name)
-                        pairLR <- pairLR[pairLR.name, ]
-                        prob <- net$prob
-                        pval <- net$pval
-                        prob[pval > thresh] <- 0
-                        if (length(pairLR.name) > 1) {
-                            pairLR.name.use <- pairLR.name[apply(prob[,,pairLR.name], 3, sum) != 0]
-                        } else {
-                            pairLR.name.use <- pairLR.name[sum(prob[,,pairLR.name]) != 0]
-                        }
-                        ###UNTIL HERE. RETURN NULL INSTEAD OF STOPPING FUNCTION
-                        
-                        if (length(pairLR.name.use) == 0) return(NULL)
-                        netVisual_aggregate(object, 
-                                            signaling = x, 
-                                            layout = "circle")
+                        tryCatch(
+                          netVisual_aggregate(object, 
+                                              signaling = x, 
+                                              layout = "circle"),
+                          error = function(e) {
+                            message(paste('An Error Occurred in netVisual_aggregate', x))
+                            print(e)
+                            
+                            NULL
+                          })
                     }, simplify = F)
     
-    dev.off()
+    dev.noerror()
     
     groupSize <- as.numeric(table(object@idents))
     mat <- object@net$weight
@@ -258,8 +256,9 @@ cc_analysis <- function(object, pathways, thresh = 0.05){
     
     dims <- c(ceiling(limit/6), 6)
     
-    
+    dev.noerror()
     par(mfrow = dims, xpd=TRUE)
+    tryCatch({
     for (i in 1:nrow(mat)) {
         mat2 <-
             matrix(
@@ -276,52 +275,48 @@ cc_analysis <- function(object, pathways, thresh = 0.05){
             edge.weight.max = max(mat),
             title.name = rownames(mat)[i]
         )
-    }
+    }},
+    error = function(e){
+      print(e)
+      
+      NULL
+    })
     
-    dev.off()
+    dev.noerror()
     
     par(mfrow=c(1,1))
     
     pathway_heatmaps <- sapply(pathways,
                                function(x) {
-                                   if(!x %in% dimnames(slot(object, 'netP')$prob)[[3]]) return(NULL)
+                                   tryCatch(
                                    netVisual_heatmap(object, 
-                                                     signaling = x)
+                                                     signaling = x),
+                                   error = function(e){
+                                     message(paste('An Error Occurred in netVisual_heatmap', x))
+                                     print(e)
+                                     
+                                     NULL
+                                   })
                                })
-    dev.off()
+    dev.noerror()
     par(mfrow=c(1,1))
     contributions <- sapply(pathways,
                                  function(x) {
-                                     ###THIS PART IS FROM THE FUNCTION netVisual_aggregate
-                                     ###TO SKIP IF THERE IS NO SIG PATHWAY INSTEAD OF STOPPING
-                                     pairLR <- searchPair(signaling = x, 
-                                                          pairLR.use = object@LR$LRsig, 
-                                                          key = "pathway_name", 
-                                                          matching.exact = T, 
-                                                          pair.only = T)
-                                     net <- object@net 
-                                     pairLR.use.name <- dimnames(net$prob)[[3]]
-                                     pairLR.name <- intersect(rownames(pairLR), pairLR.use.name)
-                                     pairLR <- pairLR[pairLR.name, ]
-                                     prob <- net$prob
-                                     pval <- net$pval
-                                     prob[pval > thresh] <- 0
-                                     if (length(pairLR.name) > 1) {
-                                         pairLR.name.use <- pairLR.name[apply(prob[,,pairLR.name], 3, sum) != 0]
-                                     } else {
-                                         pairLR.name.use <- pairLR.name[sum(prob[,,pairLR.name]) != 0]
-                                     }
-                                     ###UNTIL HERE. RETURN NULL INSTEAD OF STOPPING FUNCTION
-                                     
-                                     if (length(pairLR.name.use) == 0) return(NULL)
+                                   tryCatch(
                                      netAnalysis_contribution(object, 
                                                               signaling = x, 
                                                               thresh = 0.05, 
-                                                              return.data =  TRUE)
+                                                              return.data =  TRUE),
+                                     error = function(e){
+                                       message(paste('An Error Occurred in netAnalysis_contribution', x))
+                                       print(e)
+                                       
+                                       NULL
+                                     })
                                      
                                  }, simplify = F)
     
-    dev.off()
+    dev.noerror()
     contribution_data <- lapply(contributions, function(x) x$LR.contribution)
     contribution_data <- rbindlist(contribution_data, idcol = 'pathway')
     
@@ -340,7 +335,13 @@ cc <- sapply(files, function(x) read_rds(file.path('/vscratch/scRNAseq/data/', x
 
 cc_res <- sapply(cc, function(x) {
     cc_analysis(x, 
-                pathways = c('MHC-I', 'MHC-II', 'LAMININ', 'COLLAGEN')
+                pathways = c('MHC-I', 
+                             'MHC-II',
+                             'LAMININ',
+                             'COLLAGEN', 
+                             'FN1',
+                             'WNT',
+                             'GALECTIN')
                 )},
     simplify = F)
 
@@ -411,3 +412,45 @@ lapply(seq_along(cc_res), function(x, a, b){
   }, e = a[[x]]$contribution_plots, f = names(a[[x]]$contribution_plots))
   
 }, a = cc_res, b = names(cc_res))
+
+group.new = Reduce(union, lapply(cc, function(x){
+  levels(x@idents)
+}))
+
+cc <- lapply(cc, liftCellChat, group.new)
+
+merged_cc <- mergeCellChat(cc, 
+                           add.names = names(cc) %>% 
+                             str_remove_all('^cellchat_|.rds$'),
+                           cell.prefix = FALSE)
+
+compareInteractions(merged_cc, 
+                    group = rep(1:4, each = 3), 
+                    x.lab.rot = T, 
+                    show.legend = F)
+
+par(mfrow = c(1,1), xpd=TRUE)
+netVisual_diffInteraction(merged_cc, weight.scale = T, comparison = 1:2)
+
+rankNet(merged_cc,
+        mode = "comparison", 
+        stacked = T, 
+        do.stat = TRUE,
+        comparison = 1:3,
+        measure = 'weight') +
+  rankNet(merged_cc,
+          mode = "comparison", 
+          stacked = T, 
+          do.stat = TRUE,
+          comparison = 4:6,
+          measure = 'weight') 
+
+netVisual_heatmap(merged_cc, 
+                  measure = "weight",
+                  comparison = 1:2)
+
+netVisual_bubble(merged_cc, comparison = 10:12, angle.x = 90)
+
+ggsave(file.path(plotsDir, 'all_celltypes_pathways_LRs_Skin_HDAC2_comparison.pdf'),
+       height = 80, width = 70, limitsize = F)
+
