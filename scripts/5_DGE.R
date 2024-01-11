@@ -35,7 +35,7 @@ theme_my <- function(...) {
       size = 8,
       hjust = 1,
       vjust = 0.5
-    )
+    ),
   ) + theme(...)
 }
 
@@ -57,97 +57,97 @@ monocle.obj <- read_rds(file.path(dataDir, "3_annotated_monocle.cds"))
 ## Pseudo Bulk -------------------------------------------------------------
 
 ### Create Pseudo Bulk ------------------------------------------------------
-make_pseudobulk <-
-  function(cds, cell_groups, func = c('mean', 'sum')) {
-    group_df <- cds@colData[, cell_groups] %>%
-      subset(treatment.agg != "Undefined") %>%
-      data.frame() %>%
-      droplevels()
-    
-    setDT(group_df, keep.rownames = "rn")
-    group_df <- group_df[,
-                         .(rn, groups = do.call(paste, c(.SD, sep = "_"))),
-                         .SDcols = -"rn"]
-    
-    cds@colData$Size_Factor <- 1
-    
-    func <- match.arg(func)
-    aggregate_gene_expression(
-      cds,
-      cell_group_df = group_df,
-      norm_method = "size_only",
-      scale_agg_values = F,
-      cell_agg_fun = func
-    )
-  }
 
-make_designmat <- function(cds, counts) {
-  des <- cds@colData %>% as.data.table()
-  des <- des[treatment.agg != 'Undefined'] %>% droplevels()
-  des <-
-    des[, .(celltype, treatment.agg, sample, sex, organ, experiment)
-        ][
-          , .N, keyby = .(celltype, treatment.agg, sample, organ, experiment)
+make_pseudobulk <- function(cds, cell_groups, func = c('mean', 'sum')) {
+  group_df <- cds@colData[, cell_groups] %>%
+    subset(treatment.agg != "Undefined") %>%
+    data.frame() %>%
+    droplevels()
+  
+  setDT(group_df, keep.rownames = "rn")
+  group_df <- group_df[,
+                       .(rn, 
+                         groups = do.call(paste, c(.SD, sep = "_"))),
+                       .SDcols = -"rn"]
+  
+  cds@colData$Size_Factor <- 1
+  
+  func <- match.arg(func)
+  aggregate_gene_expression(
+    cds,
+    cell_group_df = group_df,
+    norm_method = "size_only",
+    scale_agg_values = FALSE,
+    cell_agg_fun = func
+  )
+}
+
+make_metadata <- function(cds, counts) {
+  meta <- cds@colData %>% as.data.table()
+  meta <- meta[treatment.agg != 'Undefined'] %>% droplevels()
+  meta <-
+    meta[,.(celltype, treatment.agg, sample, sex, organ, experiment)
+        ][, 
+          .N, 
+          keyby = .(celltype, treatment.agg, sample, sex, organ, experiment)
           ]
-  des[, rn := paste(sample, celltype, treatment.agg, sep = "_")]
-  des <- des[N > 3]
-  des <- as.data.frame(des)
-  rownames(des) <- des[,"rn"]
-  des$rn <- NULL
   
-  des <- des[match(colnames(counts), rownames(des)),]
-  des <- na.omit(des)
-  colnames(des)[2] <- "treatment"
+  meta[, rn := paste(sample, celltype, treatment.agg, sep = "_")]
+  meta <- meta[N > 3]
+  meta <- as.data.frame(meta)
+  rownames(meta) <- meta[,"rn"]
+  meta$rn <- NULL
   
-  des
+  meta <- meta[match(colnames(counts), rownames(meta)),]
+  meta <- na.omit(meta)
+  colnames(meta)[2] <- "treatment"
+  
+  meta
 }
 
 countsx <- make_pseudobulk(monocle.obj, 
                            c("sample", "celltype", "treatment.agg"))
 
-designx <- make_designmat(monocle.obj, countsx)
+metax <- make_metadata(monocle.obj, countsx)
 
 write_rds(countsx, file = file.path(dataDir, "counts_pseudobulk.rds"))
-write_rds(designx, file = file.path(shinyDir, "data/design_pseudobulk.rds"))
+write_rds(metax, file = file.path(shinyDir, "data/design_pseudobulk.rds"))
 
 ### Limma -------------------------------------------------------------------
 
-designx <- readRDS(file.path(shinyDir, "data/design_pseudobulk.rds"))
+metax <- readRDS(file.path(shinyDir, "data/design_pseudobulk.rds"))
 countsx <- readRDS(file.path(dataDir, "counts_pseudobulk.rds"))
 
 results.DGE.pseudo <- list()
 
-for (ct in unique(designx$celltype)) {
+# ct <- unique(metax$celltype)[1]
+# organx <- unique(metax$organ)[1]
+# expx <- unique(metax$experiment)[1]
+for (ct in unique(metax$celltype)) {
   message(ct, "-------------------------")
-  for (organx in unique(designx$organ)) {
-    for (expx in unique(designx$experiment)) {
-      subsetx <- designx %>%
+  for (organx in unique(metax$organ)) {
+    for (expx in unique(metax$experiment)) {
+      subsetx <- metax %>%
         subset(celltype == ct &
                  organ == organx &
                  experiment == expx)
       
-      if (nrow(subsetx) < 2)
-        next
+      if (nrow(subsetx) < 2) next
       
       countsx.pseudo <- countsx[, rownames(subsetx)]
       
-      if (length(unique(subsetx$treatment)) < 2)
-        next
+      if (length(unique(subsetx$treatment)) < 2) next
       
-      if (length(unique(subsetx$sex)) < 2) {
-        frame <-
-          model.frame( ~ 0 + treatment,
-                       subsetx, drop.unused.levels = T)
-        designmat <- model.matrix( ~ 0 + treatment, frame)
-        
-      } else {
-        frame <-
-          model.frame( ~ 0 + treatment + sex,
-                       subsetx, drop.unused.levels = T)
-        designmat <-
-          model.matrix( ~ 0 + treatment + sex, frame)
-        
-      }
+      frame <-
+        model.frame(~ 0 + treatment + sex,
+                    subsetx,
+                    drop.unused.levels = TRUE)
+      
+      tryCatch(
+        designmat <- model.matrix(~ 0 + treatment + sex, frame),
+        error = function(e){
+          designmat <<- model.matrix(~ 0 + treatment, frame)
+        })
       
       if (ncol(designmat) >= nrow(designmat)) {
         # message(pwd, "_", ct, "_", organx, "_", expx,  "---ncol(designmat) >= nrow(designmat)---")
@@ -173,15 +173,14 @@ for (ct in unique(designx$celltype)) {
       
       gfilter <- rowSums(dge$counts) > 0
       
-      
       dge <- dge[gfilter, , keep.lib.sizes = FALSE]
       
       dge <- calcNormFactors(dge)
       
       voomx <- voomWithQualityWeights(dge,
                                       design = designmat,
-                                      plot = F,
-                                      save.plot = F)
+                                      plot = FALSE,
+                                      save.plot = FALSE)
       
       out <- as.data.table(voomx$E, keep.rownames = 'rn')
       
@@ -193,16 +192,19 @@ for (ct in unique(designx$celltype)) {
       compress = 0)
       
       contrast.matrix <-
-        makeContrasts(contrasts = combn(rev(colnames(designmat)[colnames(designmat) != "M"]),
+        makeContrasts(contrasts = combn(rev(colnames(designmat[,colnames(designmat) != 'M'])),
                                         2,
                                         FUN = paste,
                                         collapse = "-"),
                       levels = designmat)
       
-      fitx <- lmFit(voomx, design = designmat)
-      fitx <- contrasts.fit(fitx, contrast.matrix)
-      fitx <- eBayes(fitx)
+      fitx <- 
+        voomx %>% 
+        lmFit(design = designmat) %>% 
+        contrasts.fit(contrast.matrix) %>% 
+        eBayes()
       
+      # coefx <- colnames(contrast.matrix)[1]
       for (coefx in colnames(contrast.matrix)) {
         topx <- topTable(fitx, number = Inf, coef = coefx)
         topx$rn <- rownames(topx)
@@ -234,9 +236,11 @@ res[, treatment := .(factor(
 ))]
 
 res[, direction := .(fcase(logFC < -1 & adj.P.Val < 0.05, "down",
-                              logFC > 1 & adj.P.Val < 0.05, "up",
-                              default = "NS"))]
+                           logFC > 1 & adj.P.Val < 0.05, "up",
+                           default = "NS"))]
 
+res[adj.P.Val == 0, adj.P.Val := 5e-324]
+res[P.Value == 0, P.Value := 5e-324]
 
 write_rds(res, file.path(resDir, "res.rds"))
 
@@ -258,13 +262,14 @@ res[,
     .SDcols = !cols
 ]
 
-list <- res[,.(rn, celltype, organ, experiment, 'direction2' = direction, treatment, t)]
+list <- res[,.(rn, celltype, organ, experiment, 'direction2' = direction,
+               treatment, t)]
 write.fst(list, file.path(shinyDir, 'data', 'list_for_shiny.fst'))
 
 design <- res[,
-    keyby=.(celltype, organ, experiment),
-    .(AveMin=min(round(AveExpr)),
-      AveMax=max(round(AveExpr)))
+    keyby = .(celltype, organ, experiment),
+    .(AveMin = min(round(AveExpr)),
+      AveMax = max(round(AveExpr)))
     ][
       , AveVal := fcase(organ == 'LN' & experiment == 'HDAC1', 3,
                         organ == 'LN' & experiment == 'HDAC2', 5,
@@ -280,10 +285,11 @@ write_rds(design, file.path(shinyDir, 'data/design.rds'))
 res <- read_rds(file.path(resDir, "res.rds"))
 setDT(res)
 
-res[rn == "Foxp3", .(expr = round(AveExpr), celltype, experiment, organ)] %>% unique %>% 
+res[rn == "Foxp3", .(expr = round(AveExpr), celltype, experiment, organ)] %>%
+  unique() %>% 
   ggplot() +
-  geom_col(aes(celltype, expr),col = "black", fill = "ivory2") +
-  facet_wrap(organ ~ experiment, scales = "free") +
+  geom_col(aes(celltype, expr), col = "black", fill = "ivory2") +
+  facet_wrap(vars(organ, experiment), scales = "free") +
   theme_my() +
   ggtitle("Foxp3 round(AveExpr)")
 

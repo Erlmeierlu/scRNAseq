@@ -137,7 +137,6 @@ cc_dat[, c('treatment', 'id') := .(factor(
 cc_dat[, keyby = .(source, target, organ, experiment, treatment), 
        summarized_interactions := .N]
 
-
 cc_dat %>%
     ggplot(aes(source, target, fill = summarized_interactions)) +
     geom_tile(col = 'ivory2') +
@@ -148,7 +147,6 @@ cc_dat %>%
 
 ggsave(file.path(plotsDir, 'ligand_receptor_interactions_count.pdf'),
        width = 12, height = 10.5)
-
 
 #Filter + calculate pathway interaction count difference between data frames 
 cc_dat[, keyby = .(source, pathway_name, organ, experiment, treatment), source_pathway_count := .N]
@@ -210,8 +208,6 @@ cc_dat[, dcast(.SD, target + pathway_name + organ + experiment ~ treatment,
 
 ggsave(file.path(plotsDir, 'target_interactions_pathways_per_comparison.pdf'),
        width = 15, height = 21)
-
-
 
 
 # Cellchat Analysis -------------------------------------------------------
