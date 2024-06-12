@@ -60,3 +60,6 @@ dge-app/rsconnect
 #Specific Folders
 /scripts/old
 /renv/python/virtualenvs/*
+/scripts/.ipynb_checkpoints
+/scripts/*.ipynb
+
