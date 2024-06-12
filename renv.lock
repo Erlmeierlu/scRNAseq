@@ -940,8 +940,13 @@
     "SoupX": {
       "Package": "SoupX",
       "Version": "1.6.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteUsername": "constantAmateur",
+      "RemoteRepo": "SoupX",
+      "RemoteRef": "master",
+      "RemoteSha": "8d89492306a7e82a79a3c0588b806d5127f2003c",
       "Requirements": [
         "Matrix",
         "R",
@@ -949,7 +954,7 @@
         "ggplot2",
         "methods"
       ],
-      "Hash": "6fc80c34fe3ded25ba2d9e2b53e8da4f"
+      "Hash": "8c52c89bdd49161675387f7d101c060d"
     },
     "SummarizedExperiment": {
       "Package": "SummarizedExperiment",

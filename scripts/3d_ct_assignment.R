@@ -7,25 +7,30 @@ library(readxl)
 
 # Directories and Used Functions -----------------------------------------------------------
 source('functions/directories_and_theme.R')
+#Check the file for detailed functions
 source('functions/explore_annotation.R')
 
 # Load Data ---------------------------------------------------------------
-monocle.obj <- read_rds('/vscratch/scRNAseq/data/first_annotation_monocle.cds')
-b_subset <- read_rds('/vscratch/scRNAseq/data/first_annotation_b_subset.cds')
-t_subset <- read_rds('/vscratch/scRNAseq/data/first_annotation_t_subset.cds')
-m_subset <- read_rds('/vscratch/scRNAseq/data/first_annotation_m_subset.cds')
+monocle.obj <- read_rds(file.path(vDir, '3a_first_annotation_full_dataset.cds'))
+b_subset <- read_rds(file.path(vDir, '3a_first_annotation_b_subset.cds'))
+t_subset <- read_rds(file.path(vDir, '3b_first_annotation_t_subset.cds'))
+m_subset <- read_rds(file.path(vDir, '3a_first_annotation_m_subset.cds'))
 
 #T Sub Type Markers
-new_t_markers <- read_xlsx(file.path(tablesDir, 'MarkerGenes_Thelper_ML.xlsx'))
-
+#These reference genes were collected by Melanie
+new_t_markers <- read_xlsx(file.path(tablesDir, '3d_MarkerGenes_Thelper_ML.xlsx'))
 
 # Exploring Subset Clusters ------------------------------------------------------
 
 ## T subset ----------------------------------------------------------------
+#Most functions here can be found in the script mentioned at the start
+#check them out for more details
 
+#first load celltypist annotations
 t_celltypist <- load_celltypist(file.path(tablesDir, 
-                                          'lymphoid_res_celltypist.csv'))
+                                          '3c_lymphoid_res_celltypist.csv'))
 
+#then we load SingleR results
 t_singler <- load_singler(file.path(tablesDir, 
                                     'new_cell_types_ref.csv'),
                           t_subset)

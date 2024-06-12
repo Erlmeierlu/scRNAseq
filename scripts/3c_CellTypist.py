@@ -3,7 +3,7 @@ import pandas as pd
 import celltypist
 from celltypist import models
 
-#Here we can also source a script where we set our directory paths. Please change
+#Here we also source a script where we set our directory paths. Please change
 #the file accordingly
 with open('functions/python_directories.py') as f:
     exec(f.read())
@@ -11,9 +11,9 @@ with open('functions/python_directories.py') as f:
 models.download_models(force_update = True, model=['Immune_All_Low.pkl', 'Immune_All_High.pkl'])
 model = models.Model.load()
 
-m_adata = sc.read_h5ad(f'{vDir}/data/0_m_anndata.h5ad')
-t_adata = sc.read_h5ad(f'{vDir}/data/0_t_anndata.h5ad')
-b_adata = sc.read_h5ad(f'{vDir}/data/0_b_anndata.h5ad')
+m_adata = sc.read_h5ad(f'{vDir}/3b_m_anndata.h5ad')
+t_adata = sc.read_h5ad(f'{vDir}/3b_t_anndata.h5ad')
+b_adata = sc.read_h5ad(f'{vDir}/3b_b_anndata.h5ad')
 
 def predict_ct(data, prefix, model = model, majority_voting = False, mode = 'best match'):
     data.obsm['X_umap'] = data.obsm['X_UMAP']
@@ -22,7 +22,7 @@ def predict_ct(data, prefix, model = model, majority_voting = False, mode = 'bes
     predictions = celltypist.annotate(data, model = model, majority_voting = majority_voting, mode = mode)
     pdata = predictions.to_adata()
     out = pdata.obs
-    out.to_csv(f'{plotsDir}{prefix}_res_celltypist.csv')
+    out.to_csv(f'{tablesDir}/3c_{prefix}_res_celltypist.csv')
 
 dic = {'myeloid': m_adata, 'lymphoid': t_adata, 'b': b_adata}
 
