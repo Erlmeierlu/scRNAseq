@@ -1,0 +1,17 @@
+plots/
+results/
+data/
+.git/
+.Rproj.user/
+tables/
+README.md
+.Rprofile
+.Renviron
+.Rhistory
+renv.lock
+scRNAseq.Rproj
+dge-app/data
+dge-app/rsconnect
+dge-app/cached_data
+scripts/old
+renv/

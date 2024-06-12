@@ -50,6 +50,7 @@ rsconnect/
 dge-app/rsconnect
 # Symbolic links and data folders
 /data
+/breg_ref
 /plots
 /tables
 /results
@@ -58,3 +59,4 @@ dge-app/rsconnect
 /dge-app/cached_data
 #Specific Folders
 /scripts/old
+/renv/python/virtualenvs/*

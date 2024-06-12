@@ -628,18 +628,17 @@ server <- function(input, output, session) {
     
     res_dat <- reactive({
         tryCatch(
-        res.pb <- read.fst(file.path(dataDir,
-                                     paste0(
-                                         input$celltype,
-                                         "_",
-                                         input$organ,
-                                         "_",
-                                         input$experiment,
-                                         ".fst"
-                                         
-                                     )),
-                           as.data.table = TRUE
-        ),
+            res.pb <- read.fst(file.path(dataDir,
+                                         paste0(
+                                             input$celltype,
+                                             "_",
+                                             input$organ,
+                                             "_",
+                                             input$experiment,
+                                             ".fst"
+                                             
+                                         )),
+                               as.data.table = TRUE),
         error=function(e) {
             return(NULL)
         })
@@ -667,10 +666,11 @@ server <- function(input, output, session) {
         bindEvent(req(res_dat()))
     
     designx <- reactive({
-        setDT(read_rds(file.path(dataDir, "design_pseudobulk.rds")),
-              keep.rownames = "rn")[celltype == input$celltype &
-                                        organ == input$organ &
-                                        experiment == input$experiment]
+        read_rds(file.path(dataDir, 
+                           "design_pseudobulk.rds")
+                 )[celltype == input$celltype &
+                       organ == input$organ &
+                       experiment == input$experiment]
         
     }) %>%  
         bindEvent(input$plotter, input$rn)

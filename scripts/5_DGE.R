@@ -1,248 +1,233 @@
-library(dplyr)
-library(stringr)
-library(ggplot2)
+library(tidyverse)
 library(monocle3)
 library(data.table)
 library(limma)
 library(edgeR)
-library(readr)
 library(fst)
+library(Matrix.utils)
 
-#personal theme
-theme_my <- function(...) {
-  theme(
-    panel.grid.major = element_line(colour = "lightgray"),
-    panel.grid.minor = element_blank(),
-    panel.background = element_blank(),
-    panel.border = element_rect(
-      colour = "black",
-      fill = NA,
-      size = 1
-    ),
-    panel.spacing.x = unit(10, "mm"),
-    axis.text = element_text(colour = "black"),
-    axis.ticks = element_line(colour = "black"),
-    legend.key = element_blank(),
-    text = element_text(size = 15),
-    strip.text.x = element_text(size = 10, margin = margin(b = 2, t = 2)),
-    strip.background = element_rect(
-      fill = "#9FD7D2",
-      colour = "black",
-      size = 1
-    ),
-    axis.text.x = element_text(
-      angle = 90,
-      size = 8,
-      hjust = 1,
-      vjust = 0.5
-    ),
-  ) + theme(...)
-}
+# Directories and Used Functions -----------------------------------------------------------
+source('functions/directories_and_theme.R')
 
-#setting up directories
-gfsDir <- '/media/AGFORTELNY/PROJECTS/Gratz_InflammedSkin'
-plotsDir <- file.path(gfsDir, 'plots')
-tablesDir <- file.path(gfsDir, 'tables')
-oldDir <- "/vscratch/scRNAseq/data/old"
-shinyDir <- 'dge-app'
-dataDir <-"data"
-resDir <- "results"
-
-# Load Data ---------------------------------------------------------------
-
-monocle.obj <- read_rds(file.path(dataDir, "3_annotated_monocle.cds"))
-
-# DGE Analysis -------------------------------------------------
-
-## Pseudo Bulk -------------------------------------------------------------
-
-### Create Pseudo Bulk ------------------------------------------------------
-
-make_pseudobulk <- function(cds, cell_groups, func = c('mean', 'sum')) {
-  group_df <- cds@colData[, cell_groups] %>%
-    subset(treatment.agg != "Undefined") %>%
-    data.frame() %>%
-    droplevels()
-  
-  setDT(group_df, keep.rownames = "rn")
-  group_df <- group_df[,
-                       .(rn, 
-                         groups = do.call(paste, c(.SD, sep = "_"))),
-                       .SDcols = -"rn"]
-  
-  cds@colData$Size_Factor <- 1
+#Unique Functions
+make_pseudobulk <- function(cds, 
+                            cell_groups, 
+                            func = c('mean', 'sum'),
+                            return = c('both', 'pseudobulk', 'percentage')) {
   
   func <- match.arg(func)
-  aggregate_gene_expression(
-    cds,
-    cell_group_df = group_df,
-    norm_method = "size_only",
-    scale_agg_values = FALSE,
-    cell_agg_fun = func
-  )
+  return <- match.arg(return)
+  if(return == 'percentage') func <- 'sum'
+  
+  cds <- cds[, cds$treatment.agg != 'Undefined']
+  groups <- colData(cds)[, cell_groups] %>% 
+    droplevels
+  
+  dge_groups <- base::do.call(paste, c(as.data.frame(groups), sep = '_'))
+  
+  c <- counts(cds)
+  
+  #The next 10 lines are taken from edgeR::filterByExpr and edgeR::cpm
+  #Those functions are very slow due to the conversion of sparse count matrices
+  #to 'normal' matrices. Since I will not use log transformation here the results
+  #are the same. This is way faster now.
+  lib.size <- colSums(c)
+  dge_groups <- as.factor(dge_groups)
+  n <- tabulate(dge_groups)
+  MinSampleSize <- min(n[n > 0L])
+  MedianLibSize <- median(lib.size)
+  CPM.Cutoff <- 10/MedianLibSize * 1e+06
+  CPM <- t(t(c)/lib.size*1e6)
+  tol <- 1e-14
+  keep.CPM <- rowSums(CPM >= CPM.Cutoff) >= (MinSampleSize - tol)
+  keep.TotalCount <- (rowSums(c) >= 15 - tol)
+  gfilter <- keep.CPM & keep.TotalCount
+  
+  c <- c[gfilter, ]
+  
+  c <- t(c)
+  
+  pb <- aggregate.Matrix(c,
+                         groupings = groups)
+  if(return == 'pseudobulk' & func == 'sum') return(t(pb))
+  
+  pb_c <- aggregate.Matrix(c, 
+                           groupings = groups, 
+                           fun = 'count') 
+  if(func == 'mean') {
+    pb@x <- pb@x/pb_c@x
+  }
+  
+  if(return == 'pseudobulk') return(t(pb))
+  
+  size <- groups %>% 
+    as.data.frame() %>% 
+    unite(groupings, everything(), sep = '_') %>% 
+    group_by(groupings) %>%  
+    summarize(n=n())
+  
+  size <- size[match(rownames(pb_c), size$groupings),]
+  stopifnot(all(rownames(pb_c) == size$groupings))
+  pc <- pb_c/size$n
+  
+  pb@x[is.na(pb@x)] <- 0
+  if(return == 'percentage') return(t(pc))
+  
+  list(expression = t(pb), percentage = t(pc))
 }
 
-make_metadata <- function(cds, counts) {
+make_metadata <- function(cds, counts, use_ct_cluster = FALSE) {
   meta <- cds@colData %>% as.data.table()
+  if(isTRUE(use_ct_cluster)) meta[, celltype := ct_cluster]
   meta <- meta[treatment.agg != 'Undefined'] %>% droplevels()
   meta <-
     meta[,.(celltype, treatment.agg, sample, sex, organ, experiment)
-        ][, 
-          .N, 
-          keyby = .(celltype, treatment.agg, sample, sex, organ, experiment)
-          ]
+    ][, 
+      .N, 
+      keyby = .(celltype, treatment.agg, sample, sex, organ, experiment)
+    ]
   
   meta[, rn := paste(sample, celltype, treatment.agg, sep = "_")]
   meta <- meta[N > 3]
-  meta <- as.data.frame(meta)
-  rownames(meta) <- meta[,"rn"]
-  meta$rn <- NULL
-  
-  meta <- meta[match(colnames(counts), rownames(meta)),]
+
+  meta <- meta[match(colnames(counts), meta$rn),]
   meta <- na.omit(meta)
-  colnames(meta)[2] <- "treatment"
-  
+  setnames(meta, 'treatment.agg', 'treatment')
   meta
 }
 
-countsx <- make_pseudobulk(monocle.obj, 
-                           c("sample", "celltype", "treatment.agg"))
+perform_dge <- function(metadata, 
+                        counts, 
+                        group_by = NULL, 
+                        save_data_for_shiny = FALSE,
+                        model_term = 'treatment'){
+  
+  apply_limma <- function(x, by = NULL){
+    if(nrow(x) < 2) return(data.table())
+    if(uniqueN(x[,t, env = list(t = model_term)]) < 2) return(data.table())
+    
+    counts_subset <- counts[, x$rn]
+    
+    model1 <- formula(paste0('~0+', model_term, '+sex'))
+    model2 <- formula(paste0('~0+', model_term))
+    
+    frame <- model.frame(model1, x, 
+                         drop.unused.levels = TRUE)
+  
+    tryCatch(
+      designmat <- model.matrix(model1, frame),
+      error = function(e){
+        designmat <<- model.matrix(model2, frame)
+      })
+    
+    colnames(designmat) <-
+      colnames(designmat) %>%
+      str_remove_all("\\(|\\)|celltype|organ|experiment|treatment|\\/|[0-9]\\/[0-9]|sex") %>%
+      str_replace_all("\\-", "_")
+    
+    counts_subset <- DGEList(counts_subset)
+    counts_subset <- calcNormFactors(counts_subset)
+    
+    voomx <- voomWithQualityWeights(counts_subset,
+                                    design = designmat,
+                                    plot = FALSE,
+                                    save.plot = FALSE)
+    
+    if(save_data_for_shiny == TRUE){
+      out <- as.data.table(voomx$E, keep.rownames = 'rn')
+      
+      filename <- paste(lapply(by, as.character), collapse = '_')
+      write_fst(out, file.path(
+        shinyDir,
+        'data',
+        paste0('counts_', filename, '.fst')
+      ),
+      compress = 0)
+    }
+    
+    contrast.matrix <-
+      makeContrasts(contrasts = combn(rev(colnames(designmat[,colnames(designmat) != 'M'])),
+                                      2,
+                                      FUN = paste,
+                                      collapse = "-"),
+                    levels = designmat)
+    
+    tryCatch(
+      fitx <-
+        voomx %>%
+        lmFit(design = designmat) %>%
+        contrasts.fit(contrast.matrix) %>%
+        eBayes(
+        ), error = function(e) fitx <<- FALSE
+    )
+    
+    if(isFALSE(fitx)) return(data.table())
+    
+    map(set_names(colnames(contrast.matrix)), function(x) {
+      topx <- topTable(fitx, number = Inf, coef = x)
+      as.data.table(topx, keep.rownames = 'rn')
+    }) %>%
+      rbindlist(idcol = 'coef')
+  }
+  
+  metadata <- metadata[, keyby = group_by, apply_limma(.SD, .BY)]
+  metadata[,coef := str_replace_all(coef, '-', '_vs_')]
+  
+  metadata[, direction := .(fcase(logFC < -1 & adj.P.Val < 0.05, "down",
+                                  logFC > 1 & adj.P.Val < 0.05, "up",
+                                  default = "NS"))]
+  
+  metadata[adj.P.Val == 0, adj.P.Val := 5e-324]
+  metadata[P.Value == 0, P.Value := 5e-324]
+  metadata[]
+}
+# Load Data ---------------------------------------------------------------
+
+monocle.obj <- read_rds(file.path(dataDir, "3_annotated_monocle.cds"))
+t_subset <- read_rds(file.path(dataDir, '3_t_subset.cds'))
+b_subset <- read_rds(file.path(dataDir, '3_b_subset.cds'))
+m_subset <- read_rds(file.path(dataDir, '3_m_subset.cds'))
+
+# Full Dataset -------------------------------------------------
+
+## Create Pseudo Bulk ------------------------------------------------------
+pb_res <- make_pseudobulk(monocle.obj, 
+                          c("sample", "celltype", "treatment.agg"),
+                          func = 'sum',
+                          return = 'pseudobulk')
+
+if(!is.list(pb_res)){
+  countsx <- pb_res
+}else{
+  countsx <- pb_res$expression
+}
 
 metax <- make_metadata(monocle.obj, countsx)
 
 write_rds(countsx, file = file.path(dataDir, "counts_pseudobulk.rds"))
 write_rds(metax, file = file.path(shinyDir, "data/design_pseudobulk.rds"))
 
-### Limma -------------------------------------------------------------------
+## Res -------------------------------------------------------------------
 
 metax <- readRDS(file.path(shinyDir, "data/design_pseudobulk.rds"))
 countsx <- readRDS(file.path(dataDir, "counts_pseudobulk.rds"))
 
-results.DGE.pseudo <- list()
-
-# ct <- unique(metax$celltype)[1]
-# organx <- unique(metax$organ)[1]
-# expx <- unique(metax$experiment)[1]
-for (ct in unique(metax$celltype)) {
-  message(ct, "-------------------------")
-  for (organx in unique(metax$organ)) {
-    for (expx in unique(metax$experiment)) {
-      subsetx <- metax %>%
-        subset(celltype == ct &
-                 organ == organx &
-                 experiment == expx)
-      
-      if (nrow(subsetx) < 2) next
-      
-      countsx.pseudo <- countsx[, rownames(subsetx)]
-      
-      if (length(unique(subsetx$treatment)) < 2) next
-      
-      frame <-
-        model.frame(~ 0 + treatment + sex,
-                    subsetx,
-                    drop.unused.levels = TRUE)
-      
-      tryCatch(
-        designmat <- model.matrix(~ 0 + treatment + sex, frame),
-        error = function(e){
-          designmat <<- model.matrix(~ 0 + treatment, frame)
-        })
-      
-      if (ncol(designmat) >= nrow(designmat)) {
-        # message(pwd, "_", ct, "_", organx, "_", expx,  "---ncol(designmat) >= nrow(designmat)---")
-        next
-      }
-      
-      colnames(designmat) <-
-        colnames(designmat) %>%
-        str_remove_all("\\(|\\)|sample|treatment|\\/|[0-9]\\/[0-9]|sex") %>%
-        str_replace_all("\\-", "_")
-      
-      dge <- DGEList(countsx.pseudo)
-      
-      # gfilter <-
-      #         filterByExpr(
-      #                 dge,
-      #                 design = designmat,
-      #                 large.n = 10,
-      #                 min.count = 7,
-      #                 min.prop = 0.7,
-      #                 min.total.count = 8
-      #         )
-      
-      gfilter <- rowSums(dge$counts) > 0
-      
-      dge <- dge[gfilter, , keep.lib.sizes = FALSE]
-      
-      dge <- calcNormFactors(dge)
-      
-      voomx <- voomWithQualityWeights(dge,
-                                      design = designmat,
-                                      plot = FALSE,
-                                      save.plot = FALSE)
-      
-      out <- as.data.table(voomx$E, keep.rownames = 'rn')
-      
-      write_fst(out, file.path(
-        shinyDir,
-        'data',
-        paste0('counts_', ct, '_', organx, '_', expx, '.fst')
-      ),
-      compress = 0)
-      
-      contrast.matrix <-
-        makeContrasts(contrasts = combn(rev(colnames(designmat[,colnames(designmat) != 'M'])),
-                                        2,
-                                        FUN = paste,
-                                        collapse = "-"),
-                      levels = designmat)
-      
-      fitx <- 
-        voomx %>% 
-        lmFit(design = designmat) %>% 
-        contrasts.fit(contrast.matrix) %>% 
-        eBayes()
-      
-      # coefx <- colnames(contrast.matrix)[1]
-      for (coefx in colnames(contrast.matrix)) {
-        topx <- topTable(fitx, number = Inf, coef = coefx)
-        topx$rn <- rownames(topx)
-        results.DGE.pseudo[[ct]][[organx]][[expx]][[coefx]] <-
-          data.table(topx)
-      }
-    }
-  }
-}
-
-### Save Res & Shiny Data---------------------------------------------------------------------
-
-res <-
-  rbindlist(lapply(results.DGE.pseudo, function(l1) {
-    rbindlist(lapply(l1, function(l2) {
-        rbindlist(lapply(l2, function(l3) {
-          rbindlist(l3, idcol = "coef")}), 
-          idcol = "experiment")
-    }), idcol = "organ")
-  }), idcol = "celltype")
+res <- perform_dge(metax, 
+                   countsx, 
+                   c('celltype', 'organ', 'experiment'),
+                   save_data_for_shiny = TRUE)
 
 res[, treatment := .(factor(
   fcase(
-    coef %in% "HDAC_WT-NoT", "WT_vs_ctrl", 
-    coef %in% "HDAC_cKO-NoT", "KO_vs_ctrl",
-    coef %in% "HDAC_cKO-HDAC_WT", "KO_vs_WT"
+    coef %in% "HDAC_WT_vs_NoT", "WT_vs_ctrl", 
+    coef %in% "HDAC_cKO_vs_NoT", "KO_vs_ctrl",
+    coef %in% "HDAC_cKO_vs_HDAC_WT", "KO_vs_WT"
   ), 
   levels = c("WT_vs_ctrl", "KO_vs_ctrl", "KO_vs_WT")
 ))]
 
-res[, direction := .(fcase(logFC < -1 & adj.P.Val < 0.05, "down",
-                           logFC > 1 & adj.P.Val < 0.05, "up",
-                           default = "NS"))]
-
-res[adj.P.Val == 0, adj.P.Val := 5e-324]
-res[P.Value == 0, P.Value := 5e-324]
-
 write_rds(res, file.path(resDir, "res.rds"))
+fwrite(res, file.path(resDir, 'dge_res.csv'))
 
 res <- read_rds(file.path(resDir, 'res.rds'))
 res[, ':='(start = fcase(grepl('ctrl', treatment), 'NoT',
@@ -267,302 +252,56 @@ list <- res[,.(rn, celltype, organ, experiment, 'direction2' = direction,
 write.fst(list, file.path(shinyDir, 'data', 'list_for_shiny.fst'))
 
 design <- res[,
-    keyby = .(celltype, organ, experiment),
-    .(AveMin = min(round(AveExpr)),
-      AveMax = max(round(AveExpr)))
-    ][
-      , AveVal := fcase(organ == 'LN' & experiment == 'HDAC1', 3,
-                        organ == 'LN' & experiment == 'HDAC2', 5,
-                        organ == 'Skin' & experiment == 'HDAC1', 8,
-                        organ == 'Skin' & experiment == 'HDAC2', 3
-                        )]
-
+              keyby = .(celltype, organ, experiment),
+              .(AveMin = min(round(AveExpr)),
+                AveMax = max(round(AveExpr)))
+][
+  , AveVal := AveMin
+  ]
 
 write_rds(design, file.path(shinyDir, 'data/design.rds'))
 
-# P_val Histos ------------------------------------------------------------
+# Organs in HDAC2_WT --------------------------------------------------------------
 
-res <- read_rds(file.path(resDir, "res.rds"))
-setDT(res)
+## Res -------------------------------------------------------------------
 
-res[rn == "Foxp3", .(expr = round(AveExpr), celltype, experiment, organ)] %>%
-  unique() %>% 
-  ggplot() +
-  geom_col(aes(celltype, expr), col = "black", fill = "ivory2") +
-  facet_wrap(vars(organ, experiment), scales = "free") +
-  theme_my() +
-  ggtitle("Foxp3 round(AveExpr)")
+metax <- readRDS(file.path(shinyDir, "data/design_pseudobulk.rds"))
+countsx <- readRDS(file.path(dataDir, "counts_pseudobulk.rds"))
 
-ggsave(file.path(plotsDir, "Foxp3_expression.pdf"))
-
-res_fox <- res[(organ == 'LN' & experiment == 'HDAC1' & round(AveExpr) > 2) | 
-                 (organ == 'LN' & experiment == 'HDAC2' & round(AveExpr) > 4) | 
-                 (organ == 'Skin' & experiment == 'HDAC1' & round(AveExpr) > 7) |
-                 (organ == 'Skin' & experiment == 'HDAC2' & round(AveExpr) > 2)]
-
-  for (organx in unique(res_fox$organ)) {
-    for (expx in unique(res_fox$experiment)) {
-      subsetx <- res_fox %>% filter(
-                                organ == organx,
-                                experiment == expx,
-                                !grepl("Intercept|M", coef))
-      
-      if(nrow(subsetx) == 0) next
-      
-        subsetx %>%
-        ggplot() +
-        geom_histogram(aes(P.Value, fill = factor(round(AveExpr))),
-                       bins = 30) +
-        facet_wrap(~ treatment) +
-        theme_my() +
-        theme(panel.grid.major = element_blank()) +
-        ggtitle(paste("ave_expr_filter_pseudo_histo",
-                      organx, expx, sep = "_"))
-      
-      ggsave(file.path(plotsDir,
-      paste0(
-        paste("filt_ave_expr_pseudo_histo",
-              organx, expx, sep = "_"),
-        ".pdf"
-      )))
-    }
-  }
-
-# Cor HDAC1 HDAC2 ---------------------------------------------------------
+#wt only skin vs ln in hdac2
+organ_meta <- metax[experiment == 'HDAC2' & treatment == 'HDAC_WT']
+res_organ <- perform_dge(organ_meta, 
+                         countsx,
+                         group_by = 'celltype',
+                         model_term = 'organ')
 
 
-cors <- res[treatment == "WT_vs_ctrl",.(celltype, organ, experiment, treatment, logFC, t, rn)] %>% 
-  dcast(organ + rn + celltype ~experiment, value.var = c("logFC", "t"))
+write_rds(res_organ, file.path(resDir, "res_organ.rds"))
 
-cors[, keyby = .(organ, celltype), .(
-  logFC = cor(logFC_HDAC1, logFC_HDAC2, use = "p", method = "s"),
-  t = cor(t_HDAC1, t_HDAC2, use = "p", method = "s")
-)] %>%
-  na.omit() %>%
-  melt(id = c(1, 2),
-       value.name = "cor") %>%
-    ggplot() +
-      geom_col(aes(celltype, cor), col = "black", fill = "orchid4") +
-      facet_grid(variable ~ organ, scales = "free") +
-      theme_my() +
-      ggtitle("HDAC1/2 WT cor")
+res_organ <- read_rds(file.path(resDir, "res_organ.rds"))
 
-ggsave(file.path(plotsDir, "cor_hdacs_wt.pdf"))
+# CD45.1 Clusters -----------------------------------------------------
+## Create Subset -----------------------------------------------------------
+cd45_sub <- t_subset[,grepl('CD45', t_subset$celltype) & t_subset$organ == 'LN']
+cd45_sub@colData <- cd45_sub@colData %>% droplevels
 
-# Percent Celltype Analysis--------------------------------------------------------
-
-percent_ct_df <-
-  as.data.table(monocle.obj@colData)[treatment.agg != "Undefined",
-                                     .N,
-                                     by = .(experiment,
-                                            organ,
-                                            treatment.agg,
-                                            sex,
-                                            batch,
-                                            celltype)
-                                     ][
-                                       CJ(experiment = experiment, 
-                                          organ = organ, 
-                                          treatment.agg = treatment.agg, 
-                                          sex = sex, 
-                                          batch = batch,
-                                          celltype = celltype,
-                                          unique = T),
-                                       on = .(experiment,
-                                              organ,
-                                              treatment.agg,
-                                              sex,
-                                              batch,
-                                              celltype
-                                              )
-                                       ] %>% droplevels()
-
-setnafill(percent_ct_df, fill = 0, cols = 'N')
-percent_ct_df[,
-              ':=' (cells = sum(N),
-                    pc.cells = N / sum(N) * 100),
-              keyby = .(experiment,
-                        organ,
-                        treatment.agg,
-                        sex,
-                        batch)
-              ] %>% droplevels()
+## Create Pseudobulk ---------------------------------------------------------
+pb_sub <- make_pseudobulk(cd45_sub, 
+                          c("sample", "celltype", "treatment.agg"),
+                          func = 'sum',
+                          return = 'pseudobulk')
 
 
-percent_ct_df[, grp :=.GRP, by = .(experiment, organ, treatment.agg, celltype)]
-
-percent_ct_df[grp %in% (percent_ct_df[,sum(N) == 0, by = grp][V1 == TRUE, grp]),
-     pc.box := 100000]
-
-percent_ct_df[grp %in% (percent_ct_df[,sum(N) == 0, by = grp][V1 == FALSE, grp]),
-     pc.box := pc.cells]
-
-percent_ct_df$pc.box %>% is.na %>% sum(na.rm = T)
-(percent_ct_df$pc.box == 0) %>% sum(na.rm = T)
-(percent_ct_df$pc.box != 0) %>% sum(na.rm = T)
-
-# setnafill(percent_ct_df, fill = 0, cols = 'pc.cells')
-
-
-comp <- percent_ct_df[,treatment.agg] %>% 
-                levels %>% 
-                rev %>% 
-                combn(2, 
-                      FUN = paste,
-                      collapse = ";"
-                      )
-
-stats_list <- list()
-for(ct in unique(percent_ct_df$celltype)){
-  for(organx in unique(percent_ct_df$organ)){
-    for(expx in unique(percent_ct_df$experiment)){
-      for(compx in comp){
-        subsetx <- percent_ct_df %>% filter(treatment.agg %in% unlist(str_split(compx, ";")),
-                                 celltype == ct,
-                                 organ == organx,
-                                 experiment == expx)
-        
-          if(length(unique(subsetx$treatment.agg)) < 2) next
-          else if(length(unique(subsetx$sex)) < 2){
-            mod <- lm(pc.cells ~ treatment.agg, subsetx)
-          }
-          else mod <- lm(pc.cells ~ treatment.agg + sex, subsetx)
-        
-        stats <- summary(mod)$coefficient %>% as_tibble(rownames = "end")
-        
-        stats_fin <- stats %>% filter(grepl("WT|cKO|NoT", end))
-        stats_fin$end <- stats_fin$end %>% str_remove("treatment.agg")
-        colnames(stats_fin) <- colnames(stats_fin) %>% 
-          str_replace_all(" ", "_") %>% 
-          str_remove("\\.")
-        colnames(stats_fin)[5] <- "p_value"
-        
-        stats_list[[ct]][[organx]][[expx]][[compx]] <- stats_fin
-      }
-    }
-  }
+if(!is.list(pb_res)){
+  countsx_sub <- pb_sub
+}else{
+  countsx_sub <- pb_sub$expression
 }
-  
-res.stats <-
-  rbindlist(lapply(stats_list, function(l1) {
-    rbindlist(lapply(l1, function(l2) {
-      rbindlist(lapply(l2, function(l3) {
-          rbindlist(l3, idcol = "comparison")}), idcol = "experiment")
-    }), idcol = "organ")
-  }), idcol = "celltype")
 
-res.stats[, c('start', 'comparison', 'adj_p', 'label') := {
-  start = str_extract(comparison, '\\w+$')
-  comparison = str_replace(comparison, ';', '_vs_')
-  adj_p = p.adjust(p_value, method = 'BH')
-  label = fcase(adj_p %between% c(0.05, 0.1) & adj_p != 0.1, '*',
-                adj_p %between% c(0.01, 0.05) & adj_p != 0.05, '**',
-                adj_p < 0.01, '***',
-                default = 'NS')
-  .(start, comparison, adj_p, label)
-  }]
+meta_sub <- make_metadata(cd45_sub, countsx_sub)
 
-  
-y_values <- percent_ct_df[percent_ct_df[,
-                                        .I[which.max(pc.cells)],
-                                        by = .(experiment,
-                                               organ,
-                                               celltype,
-                                               treatment.agg)]$V1
-                          ][,
-                            dcast(.SD,
-                                  'experiment + organ + celltype ~ treatment.agg',
-                                  value.var = 'pc.cells')]
+## Res -------------------------------------------------------------------
 
-res.stats <-
-  left_join(res.stats, y_values, by = c("experiment", "organ", "celltype"))
-  
+res_sub <- perform_dge(meta_sub, countsx_sub, model_term = 'celltype')
+write_rds(res_sub, file.path(resDir, "res_cd45.rds"))
 
-fun <- function(x){
-  fcase(x$comparison == 'HDAC_cKO_vs_NoT', 
-        as.matrix(x[,13:15]) %>% rowMaxs * 1.3,
-        default = 1)
-}
-res.stats[,
-          position := {
-            pos <- fcase(comparison == 'HDAC_cKO_vs_NoT',
-                            as.matrix(.SD[,13:15]) %>% rowMaxs * 1.3,
-                            comparison == 'HDAC_cKO_vs_HDAC_WT',
-                            as.matrix(.SD[,14:15]) %>% rowMaxs * 1.15,
-                            comparison == 'HDAC_WT_vs_NoT',
-                            as.matrix(.SD[,13:14]) %>% rowMaxs * 1.085)
-            fifelse(pos < 3, pos + 3, pos)
-            }]
-                                    
-  
-  stats <- res.stats %>% filter(label != "NS")
-  # stats$start <- c(3-0.4/3, 3-0.4/3, 5-0.4/3, 12-0.4/3, 16-0.4/3, 16-0.4/3, 16-0.4/3)
-  # stats$end <- c(3+0.4/3, 3, 5+0.4/3, 12, 16+0.4/3, 16, 16)
-  # stats$position <- stats$position/10
-  
-  point_data <- copy(percent_ct_df)
-  point_data[,pc.cells := fcase(pc.box == 100000, 100000, rep(TRUE, .N), pc.cells)]
-  
-  percent_ct_df %>% 
-          ggplot(aes(celltype, pc.cells)) +
-          geom_boxplot(
-                       aes(fill = treatment.agg,
-                           y = pc.box), 
-                       outlier.shape = NA, 
-                       width = 0.75,
-                       position = position_dodge2(preserve = 'single')) +
-          geom_point(data = point_data[pc.cells != 0],
-                     aes(group = treatment.agg, col = batch, shape = sex),
-                     size = 2, 
-                     alpha = 0.8,
-                     position = position_jitterdodge(jitter.width = 0.3, 
-                                                     dodge.width = 0.75)) + 
-          # geom_signif(data = stats,
-          #             aes(xmin = start,
-          #                 xmax = end,
-          #                 annotations = label,
-          #                 y_position = position,
-          #                 ),
-          #             show.legend = TRUE,
-          #             manual = T) +
-          scale_fill_grey(start = 0.4, name = "Treatment Group") +
-          scale_shape_discrete(name = "Sex") +
-          scale_color_discrete(name = "Batch") +
-          scale_y_log10() +
-          facet_wrap(organ ~ experiment, ncol = 2) +
-          theme_my(strip.background = element_blank(),
-                   strip.text.x = element_text(hjust = 0,
-                                             size = 20),
-                   axis.text.x = element_text(size = 20),
-                   axis.text.y = element_text(size = 20),
-                   legend.title = element_text(size = 20),
-                   legend.text = element_text(size = 20)
-                   ) +
-          xlab("Celltype") +
-          ylab("% of Cells") +
-          coord_cartesian(ylim = range(percent_ct_df$pc.cells, na.rm = T) + c(-.25, .25))
-  
-  ggsave(file.path(plotsDir, "pc.pdf"), height = 5, width = 9, scale = 3)
-  
-  # ggsave("laia_perc_ct.pdf", height = 4.25, width = 5, scale = 3)
- 
-#   
-#     ggplot(percent_ct_df) +
-#       geom_jitter(aes(treatment.agg, pc.cells, col = batch, shape = sex), height = 0, width = 0.2) +
-#       facet_grid(celltype~experiment+organ, switch = "x", scales = "free_y") + 
-#       geom_signif(data = res.stats %>% filter(label != "NS"),
-#                   aes(xmin = start, 
-#                       xmax = end, 
-#                       annotations = label,
-#                       y_position = position),
-#                   show.legend = TRUE,
-#                   step_increase = 2,
-#                   vjust = 0.5,
-#                   manual = T) +
-#     theme_my() +
-#     theme(strip.placement = "outside")
-# 
-#   
-# ggsave(file.path(plotsDir, "perc_ct_sig.pdf"), height = 45)
-  
-# write.csv(percent_ct_df , file.path(tablesDir,"stats_list.csv"), row.names = F)
