@@ -59,7 +59,7 @@ dge-app/rsconnect
 /dge-app/cached_data
 #Specific Folders
 /scripts/old
-/renv/python/virtualenvs/*
+/renv/pytho
 /scripts/.ipynb_checkpoints
 /scripts/*.ipynb
 
