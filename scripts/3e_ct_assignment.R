@@ -40,7 +40,7 @@ export_to_anndata <- function(cds, filename, remove_pre_file = TRUE){
     seurat.obj@meta.data[i] <- lapply(seurat.obj@meta.data[i], as.character)
     
     file <- file.path(dataDir, 
-                      paste('3',
+                      paste('3e',
                             filename,
                             'anndata.h5Seurat',
                             sep = '_'))
@@ -55,13 +55,15 @@ export_to_anndata <- function(cds, filename, remove_pre_file = TRUE){
 }
 
 # Load Data ---------------------------------------------------------------
-monocle.obj <- read_rds('/vscratch/scRNAseq/data/first_annotation_monocle.cds')
-b_subset <- read_rds('/vscratch/scRNAseq/data/first_annotation_b_subset.cds')
-t_subset <- read_rds('/vscratch/scRNAseq/data/first_annotation_t_subset.cds')
-m_subset <- read_rds('/vscratch/scRNAseq/data/first_annotation_m_subset.cds')
+monocle.obj <- read_rds(file.path(vDir, '3a_first_annotation_full_dataset.cds'))
+b_subset <- read_rds(file.path(vDir, '3a_first_annotation_b_subset.cds'))
+t_subset <- read_rds(file.path(vDir, '3b_first_annotation_t_subset.cds'))
+m_subset <- read_rds(file.path(vDir, '3a_first_annotation_m_subset.cds'))
 
 # Refine Assignment -------------------------------------------------------
 ## T Subset ----------------------------------------------------------------
+#This assignment is now refined by looking at the first annotation plots.
+#Double check ?
 t_subset$celltype <- case_when(t_subset$Cluster %in% c(15, 3) ~ 'T_CD45.1_1',
                                t_subset$Cluster == 6 ~ 'T_CD45.1_2',
                                t_subset$Cluster == 2 ~ 'T_CD45.1_3',
@@ -77,6 +79,7 @@ t_subset$celltype <- case_when(t_subset$Cluster %in% c(15, 3) ~ 'T_CD45.1_1',
 t_subset$ct_cluster <- assign_ct_cluster(t_subset)
 
 ## B Subset -----------------------------------------------
+#trying to define larger clusters and identify differences between them
 b_subset$cluster_big <-
     case_when(
         b_subset$Cluster %in% c(3, 29, 33, 28, 35, 32) ~ 'left',
@@ -102,14 +105,16 @@ plot_genes_by_group(b_subset,
                     markers = marker_genes, 
                     max.size = 3, 
                     ordering_type = 'max')
-ggsave(file.path(plotsDir, 'b_subset_dge.pdf'))
+ggsave(file.path(plotsDir, '3e_b_subset_top_markers_large_clusters.pdf'))
 
 plot_cells(b_subset, 
            color_cells_by = 'cluster_big',
            group_label_size = 3,
            label_groups_by_cluster = F)
-ggsave(file.path(plotsDir, 'b_umap_big_cluster.jpg'))
+ggsave(file.path(plotsDir, '3e_b_subset_large_cluster_umap.jpg'))
 
+#Assignment based on some differences in top marker genes
+#Please note that this is VERY simplified
 b_subset$celltype <- case_when(b_subset$cluster_big == 'left' ~ 'B_follicular_Fth_neg',
                                b_subset$cluster_big == 'small' ~ 'Unassigned_B',
                                b_subset$cluster_big == 'bottom' ~ 'B_follicular_Mif+',
@@ -120,6 +125,8 @@ b_subset$cluster_big <- NULL
 b_subset$ct_cluster <- assign_ct_cluster(b_subset)
 
 ## M Subset ----------------------------------------------------------------
+#This assignment is now refined by looking at the first annotation plots.
+#Double check ?
 m_subset$celltype <- case_when(m_subset$Cluster %in% c(1,2,3,4,7,11) ~
                                    'Macrophages_1',
                                m_subset$Cluster %in% c(5,9,16) ~
@@ -150,36 +157,38 @@ plot_genes_by_group(m_subset,
                     markers = marker_genes, 
                     max.size = 3, 
                     ordering_type = 'max')
-ggsave(file.path(plotsDir, 'm_subset_dge.pdf'))
+ggsave(file.path(plotsDir, '3e_m_subset_top_markers.pdf'))
 
 plot_cells(m_subset, 
            color_cells_by = 'celltype',
            group_label_size = 3,
            label_groups_by_cluster = F)
-ggsave(file.path(plotsDir, 'm_umap_celltype.jpg'))
+ggsave(file.path(plotsDir, '3e_m_subset_celltype_umap.jpg'))
 
 m_subset$ct_cluster <- assign_ct_cluster(m_subset)
 
 ## Struc Subset --------------------------
 
 #Structural Cells got labelled as B cells somehow
-options(warn = 0)
-plot_cells(monocle.obj)
-ggsave(file.path(plotsDir, 'UMAP_cluster.jpg'))
 
-kc_b_cluster <- c(5, 8, 18)
+# plot_cells(monocle.obj,
+#            color_cells_by = 'celltype',
+#            group_label_size = 3,
+#            label_groups_by_cluster = F
+#            )
+# kc_b_cluster <- c(5, 8, 18)
 
-res <- load_singler(file.path(tablesDir, 'cell_types_all_ref.csv'), 
-                    subset = monocle.obj[,monocle.obj$Cluster %in% kc_b_cluster])
-res <- prepare_res(ds = res, 
-                   subset = monocle.obj[,monocle.obj$Cluster %in% kc_b_cluster])
-
-res[res[, by = .(label, cluster), frank(freq)]$V1 < 2]
-
-#dont know how those got not assigned as KCs.. all seem to be KC. Changed Label
-
-monocle.obj$celltype <- case_when(monocle.obj$Cluster %in% kc_b_cluster ~ 'Keratinocytes',
-                                  TRUE ~ monocle.obj$celltype)
+# res <- load_singler(file.path(tablesDir, 'cell_types_all_ref.csv'), 
+#                     subset = monocle.obj[,monocle.obj$Cluster %in% kc_b_cluster])
+# res <- prepare_res(ds = res, 
+#                    subset = monocle.obj[,monocle.obj$Cluster %in% kc_b_cluster])
+# 
+# res[res[, by = .(label, cluster), frank(freq)]$V1 < 2]
+# 
+# #dont know how those got not assigned as KCs.. all seem to be KC. Changed Label
+# 
+# monocle.obj$celltype <- case_when(monocle.obj$Cluster %in% kc_b_cluster ~ 'Keratinocytes',
+#                                   TRUE ~ monocle.obj$celltype)
 
 subset <- monocle.obj[, monocle.obj$celltype %in% c('Fibroblasts', 'Keratinocytes')]
 subset@colData <- subset@colData %>% droplevels()
@@ -202,7 +211,7 @@ plot_genes_by_group(kc_subset,
                     markers = marker_genes,
                     max.size = 3,
                     ordering_type = 'max')
-ggsave(file.path(plotsDir, 'kc_top_markers.pdf'), height = 7)
+ggsave(file.path(plotsDir, '3e_kc_top_markers.pdf'), height = 7)
 
 fb_subset <- subset[, subset$celltype == 'Fibroblasts']
 markers <- top_markers(fb_subset, group_cells_by = 'ct_cluster', 
@@ -220,7 +229,7 @@ plot_genes_by_group(fb_subset,
                     markers = marker_genes,
                     max.size = 3, 
                     ordering_type = 'max')
-ggsave(file.path(plotsDir, 'fb_top_markers.pdf'))
+ggsave(file.path(plotsDir, '3e_fb_top_markers.pdf'))
 
 subset$celltype <- as_tibble(subset@colData) %>%
     group_by(celltype) %>%
@@ -228,6 +237,9 @@ subset$celltype <- as_tibble(subset@colData) %>%
     pull(celltype)
 
 # Assign to Full Object ---------------------------------------------------
+
+plot_cells(monocle.obj)
+ggsave(file.path(plotsDir, '3e_full_dataset_cluster_umap.jpg'))
 
 monocle.obj$celltype[match(colnames(t_subset), 
                            colnames(monocle.obj))] <- t_subset$celltype
@@ -238,10 +250,16 @@ monocle.obj$celltype[match(colnames(m_subset),
 monocle.obj$celltype[match(colnames(subset), 
                            colnames(monocle.obj))] <- subset$celltype
 
+#Cluster 93 looks might be melanocytes based on expression of
 monocle.obj$celltype <- case_when(monocle.obj$Cluster == 93 ~ 'Melanocytes',
                                   TRUE ~ monocle.obj$celltype)
 
 #Raw Cell Type to avoid many cts in full object
+#Basically every cell, that is in one of the subsets is named after the subset.
+#Undefined_X are cells that were annotated as a certain cell type of a subset, 
+#but are not included in one of the subsets (the subsets were selected based
+#on position on UMAP). 
+#
 monocle.obj$raw_celltype <- case_when(colnames(monocle.obj) %in% colnames(t_subset) ~
                                           'T_cells',
                                       colnames(monocle.obj) %in% colnames(b_subset) ~
@@ -250,11 +268,14 @@ monocle.obj$raw_celltype <- case_when(colnames(monocle.obj) %in% colnames(t_subs
                                           'Myeloid_cells',
                                       grepl('^K', monocle.obj$celltype) ~ 'Keratinocytes',
                                       grepl('^F', monocle.obj$celltype) ~ 'Fibroblasts',
-                                      grepl('^T', monocle.obj$celltype) ~ 'removed_T',
-                                      grepl('^B', monocle.obj$celltype) ~ 'removed_B',
+                                      grepl('^T', monocle.obj$celltype) ~ 'Undefined_T',
+                                      grepl('^B', monocle.obj$celltype) ~ 'Undefined_B',
+                                      monocle.obj$celltype == 'DC' ~ 'Undefined',
                                       TRUE ~ monocle.obj$celltype)
 
-monocle.obj$celltype <- case_when(grepl('^removed', monocle.obj$raw_celltype) ~ 
+plot_cells(monocle.obj, color_cells_by = 'raw_celltype')
+
+monocle.obj$celltype <- case_when(grepl('^removed|Undefined', monocle.obj$raw_celltype) ~ 
                                       monocle.obj$raw_celltype, 
                                   TRUE ~ monocle.obj$celltype)
 
@@ -264,10 +285,10 @@ monocle.obj$ct_cluster <- assign_ct_cluster(monocle.obj)
 
 # backup for monocle object -----------------------------------------------
 #because cd45.1 that are in NoT will be removed here.. 
-write_rds(monocle.obj, file.path('/vscratch/scRNAseq/data', '3_annotated_monocle_backup.cds'))
-write_rds(t_subset, file.path('/vscratch/scRNAseq/data', '3_t_subset_backup.cds'))
-write_rds(b_subset, file.path('/vscratch/scRNAseq/data', '3_b_subset_backup.cds'))
-write_rds(m_subset, file.path('/vscratch/scRNAseq/data', '3_m_subset_backup.cds'))
+write_rds(monocle.obj, file.path(vDir, '3_annotated_monocle_backup.cds'))
+write_rds(t_subset, file.path(vDir, '3_t_subset_backup.cds'))
+write_rds(b_subset, file.path(vDir, '3_b_subset_backup.cds'))
+write_rds(m_subset, file.path(vDir, '3_m_subset_backup.cds'))
 
 monocle.obj <- clean_treatment(monocle.obj)
 

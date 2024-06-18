@@ -32,7 +32,8 @@ t_celltypist <- load_celltypist(file.path(tablesDir,
 
 #then we load SingleR results
 t_singler <- load_singler(file.path(tablesDir, 
-                                    'new_cell_types_ref.csv'),
+                                    c('3a_SingleR_res_t_subset.csv',
+                                      '3a_SingleR_res_full_dataset.csv')),
                           t_subset)
 
 t_res <- prepare_res(t_singler, t_celltypist, t_subset)
@@ -41,12 +42,14 @@ t_res <- assign_factor_levels(t_res, order_by = 'CellTypist_label.fine')
 fc_levels <- t_res$ct_cluster %>% levels
 
 #Automated Annotation
-p1 <- plot_automated_anno(t_res, ignore_ref = c('immgen_label.main', 
-                                                'old_label.fine',
+p1 <- plot_automated_anno(t_res, ignore_ref = c('immgen_label.main',
+                                                'struc_label.fine',
                                                 'th_rest_label.fine'))
 
 #CITE-seq distribution
-t_abdat <- generate_abdata(t_subset, fc_levels)
+t_abdat <- generate_abdata(t_subset, 
+                           fc_levels, 
+                           abgroups = c('cd4cd8', 'cd45x'))
 p2 <- plot_abs(t_abdat)
 
 #Organ
@@ -66,7 +69,6 @@ p4 <- plot_genes(t_subset,
           legend.position = 'none') +
   ggtitle('Top Marker Genes')
 
-
 new_t_markers <- new_t_markers %>% lapply(na.omit)
 
 names(new_t_markers) <- names(new_t_markers) %>% 
@@ -84,17 +86,17 @@ p1+p2+p3+p4+p5+
   plot_layout(widths = c(5.5, 2, 0.5, 6, 14.5))+
   plot_annotation(tag_levels = 'A')
 
-ggsave(file.path(plotsDir, 'first_t_annotation_plot.jpg'), 
+ggsave(file.path(plotsDir, '3d_t_first_annotation_plot.jpg'), 
        height = 10, 
        width = 38)
 
 plot_cells(t_subset, group_label_size = 4)
-ggsave(file.path(plotsDir, 't_subset_umap.jpg'))
+ggsave(file.path(plotsDir, '3d_umap_t_subset_cluster.jpg'))
 ## B subset ----------------------------------------------------------------
-b_celltypist <- load_celltypist(file.path(tablesDir, 'b_res_celltypist.csv'))
+b_celltypist <- load_celltypist(file.path(tablesDir, '3c_b_res_celltypist.csv'))
 
-b_singler <- load_singler(c(file.path(tablesDir, 'cell_types_b_sub_ref.csv'),
-                            file.path(tablesDir, 'new_cell_types_ref.csv')),
+b_singler <- load_singler(c(file.path(tablesDir, '3a_SingleR_res_b_subset.csv'),
+                            file.path(tablesDir, '3a_SingleR_res_full_dataset.csv')),
                           b_subset)
 b_res <- prepare_res(b_singler, b_celltypist, b_subset)
 b_res <- assign_factor_levels(b_res, order_by = 'CellTypist_label.fine')
@@ -104,7 +106,7 @@ fc_levels <- b_res$ct_cluster %>% levels
 p1 <- plot_automated_anno(b_res, use_ref = c('CellTypist_label.fine',
                                              'b_data_label.fine',
                                              'immgen_label.fine',
-                                             'old_label.fine'))
+                                             'struc_label.fine'))
 #Organ
 b_org <- prepare_organ_data(b_subset, fc_levels)
 p2 <- plot_org(b_org)
@@ -126,15 +128,15 @@ p3 <- plot_genes(b_subset,
 p1+p2+p3+
   plot_layout(widths = c(13,1.5,12))+
   plot_annotation(tag_levels = 'A')
-ggsave(file.path(plotsDir, 'first_b_annotation_plot.jpg'), height = 12, width = 21)
+ggsave(file.path(plotsDir, '3d_b_first_annotation_plot.jpg'), height = 12, width = 21)
 
 plot_cells(b_subset, group_label_size = 4)
-ggsave(file.path(plotsDir, 'b_subset_umap.jpg'))
+ggsave(file.path(plotsDir, '3d_umap_b_subset_cluster.jpg'))
 
 ## M subset ----------------------------------------------------------------
-m_celltypist <- load_celltypist(file.path(tablesDir, 'myeloid_res_celltypist.csv'))
+m_celltypist <- load_celltypist(file.path(tablesDir, '3c_myeloid_res_celltypist.csv'))
 
-m_singler <- load_singler(file.path(tablesDir, 'new_cell_types_ref.csv'),
+m_singler <- load_singler(file.path(tablesDir, '3a_SingleR_res_full_dataset.csv'),
                           m_subset)
 m_res <- prepare_res(m_singler, m_celltypist, m_subset)
 m_res <- assign_factor_levels(m_res, order_by = 'CellTypist_label.fine')
@@ -144,7 +146,7 @@ fc_levels <- m_res$ct_cluster %>% levels
 p1 <- plot_automated_anno(m_res,
                           use_ref = c('CellTypist_label.fine',
                                       'immgen_label.fine',
-                                      'old_label.fine'))
+                                      'struc_label.fine'))
 #Organ
 m_org <- prepare_organ_data(m_subset, fc_levels)
 p2 <- plot_org(m_org)
@@ -166,17 +168,17 @@ p3 <- plot_genes(m_subset,
 p1+p2+p3+
   plot_layout(widths = c(11,1.5,10))+
   plot_annotation(tag_levels = 'A')
-ggsave(file.path(plotsDir, 'first_m_annotation_plot.jpg'), height = 8, width = 21)
+ggsave(file.path(plotsDir, '3d_m_first_annotation_plot.jpg'), height = 8, width = 21)
 
 plot_cells(m_subset, group_label_size = 4)
-ggsave(file.path(plotsDir, 'm_subset_umap.jpg'))
+ggsave(file.path(plotsDir, '3d_umap_m_subset_cluster.jpg'))
 
 ## FB/KC subset ----------------------------------------------------------------
 s_subset <- monocle.obj[,grepl('^Fib|^Ker', 
                                monocle.obj$celltype)]
 s_subset@colData <- s_subset@colData %>% droplevels
 
-s_singler <- load_singler(file.path(tablesDir, 'new_cell_types_ref.csv'),
+s_singler <- load_singler(file.path(tablesDir, '3a_SingleR_res_full_dataset.csv'),
                           s_subset)
 
 s_res <- prepare_res(s_singler, subset = s_subset)
@@ -214,8 +216,8 @@ p4 <- plot_genes(s_subset,
 p1+p2+p3+p4+
   plot_layout(widths = c(11,3, 1.5,10))+
   plot_annotation(tag_levels = 'A')
-ggsave(file.path(plotsDir, 'first_struc_annotation_plot.jpg'), 
+ggsave(file.path(plotsDir, '3d_structural_first_annotation_plot.jpg'), 
        height = 8, width = 21)
 
 plot_cells(s_subset, group_label_size = 4)
-ggsave(file.path(plotsDir, 'struc_subset_umap.jpg'))
+ggsave(file.path(plotsDir, '3d_umap_structural_subset_cluster.jpg'))

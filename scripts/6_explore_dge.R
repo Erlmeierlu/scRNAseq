@@ -101,12 +101,12 @@ res_percent[,
             celltype := forcats::fct_inorder(celltype)]
 
 res_percent <- res_percent[!grepl('^Un|remo', celltype)
-                           ][
-                             celltype %in% pc_dat$celltype
-                             ][
-                               experiment == 'HDAC2'
-                               ][
-                                 coef == 'HDAC_WT_vs_NoT']
+][
+  celltype %in% pc_dat$celltype
+][
+  experiment == 'HDAC2'
+][
+  coef == 'HDAC_WT_vs_NoT']
 
 p2 <- res_percent %>% 
   ggplot(aes(x = celltype, y = V1), drop = F) +
@@ -134,23 +134,23 @@ ggsave(file.path(plotsDir, 'perc_ct_dge_HDAC2_WT_NoT.pdf'), height = 5, width = 
 
 cors <- res[treatment == "WT_vs_ctrl",
             .(celltype, organ, experiment, treatment, logFC, t, rn)
-            ][,
-              dcast(.SD, 
-                    organ + rn + celltype ~ experiment, 
-                    value.var = c("logFC", "t"))]
+][,
+  dcast(.SD, 
+        organ + rn + celltype ~ experiment, 
+        value.var = c("logFC", "t"))]
 
 cors[, 
      keyby = .(organ, celltype), .(
-         logFC = ccc(logFC_HDAC1, logFC_HDAC2),
-         t = ccc(t_HDAC1, t_HDAC2))] %>% 
-    na.omit() %>% 
-    melt(id = c(1, 2),
-         value.name = "cor") %>%
-    ggplot() +
-    geom_col(aes(celltype, cor), col = "black", fill = "orchid4") +
-    facet_grid(variable ~ organ, scales = "free") +
-    theme_my() +
-    ggtitle("HDAC1/2 WT Concordance Correlation Coefficient")
+       logFC = ccc(logFC_HDAC1, logFC_HDAC2),
+       t = ccc(t_HDAC1, t_HDAC2))] %>% 
+  na.omit() %>% 
+  melt(id = c(1, 2),
+       value.name = "cor") %>%
+  ggplot() +
+  geom_col(aes(celltype, cor), col = "black", fill = "orchid4") +
+  facet_grid(variable ~ organ, scales = "free") +
+  theme_my() +
+  ggtitle("HDAC1/2 WT Concordance Correlation Coefficient")
 
 ggsave(file.path(plotsDir, "cor_hdacs_wt.pdf"))
 
@@ -163,43 +163,43 @@ slope <- mod$coefficients[['logFC_HDAC1']] %>% round(2)
 
 ggplot(cors,
        aes(logFC_HDAC1, logFC_HDAC2)) +
-    coord_fixed(xlim = c(-maxi, maxi),
-                ylim = c(-maxi, maxi)) + 
-    geom_abline(aes(linetype = c('dashed', 'solid'),
-                    intercept = c(0, intercept),
-                    slope = c(1, slope)),
-                linewidth = 0.2,
-                data = cors[1:2,]) +
-    geom_point(col = 'grey75',
-               fill = NA,
-               size = 0.2,
-               alpha = 0.1) +
-    theme_my(legend.position = "bottom",
-             axis.text.x = element_text(angle = 0,
-                                        hjust = 0.5,
-                                        vjust = 1)) + 
-    annotate('text', 
-             label = paste0('CCC=', c),
-             x=Inf,
-             y=-Inf,
-             hjust=1.05,
-             vjust=-0.4) +
-    scale_linetype_manual(values = c('dashed', 'solid'), 
-                          labels = c('y=x', 
-                                     paste0('fit: y=', slope,'x-', abs(intercept)))) +
-    labs(linetype = element_blank(),
-         x = expression(paste(log[2], '(FC) HDAC1-WT')),
-         y = expression(paste(log[2], '(FC) HDAC2-WT')))
+  coord_fixed(xlim = c(-maxi, maxi),
+              ylim = c(-maxi, maxi)) + 
+  geom_abline(aes(linetype = c('dashed', 'solid'),
+                  intercept = c(0, intercept),
+                  slope = c(1, slope)),
+              linewidth = 0.2,
+              data = cors[1:2,]) +
+  geom_point(col = 'grey75',
+             fill = NA,
+             size = 0.2,
+             alpha = 0.1) +
+  theme_my(legend.position = "bottom",
+           axis.text.x = element_text(angle = 0,
+                                      hjust = 0.5,
+                                      vjust = 1)) + 
+  annotate('text', 
+           label = paste0('CCC=', c),
+           x=Inf,
+           y=-Inf,
+           hjust=1.05,
+           vjust=-0.4) +
+  scale_linetype_manual(values = c('dashed', 'solid'), 
+                        labels = c('y=x', 
+                                   paste0('fit: y=', slope,'x-', abs(intercept)))) +
+  labs(linetype = element_blank(),
+       x = expression(paste(log[2], '(FC) HDAC1-WT')),
+       y = expression(paste(log[2], '(FC) HDAC2-WT')))
 
 ggsave(file.path(plotsDir, "hdac_wt_ccc.jpg"))
 # Comparison to Psoriasis Data --------------------------------------------
 
 psoriasis_ref <- psoriasis_ref[, melt(.SD, 
-                          id = 'cluster', 
-                          measure(
-                              treatment,
-                              value.name,
-                              sep = '_'))
+                                      id = 'cluster', 
+                                      measure(
+                                        treatment,
+                                        value.name,
+                                        sep = '_'))
 ][,
   .(celltype = cluster,
     condition = treatment,
@@ -219,7 +219,7 @@ plot_genes_by_group(monocle.obj[,monocle.obj$raw_celltype == 'Fibroblasts'],
                     psoriasis_fb_genes,
                     max.size = 3,
                     group_cells_by = 'ct_cluster') + 
-    ggtitle('Fibroblasts Psoriasis Markers')
+  ggtitle('Fibroblasts Psoriasis Markers')
 
 ggsave(file.path(plotsDir, 'FB_Psoriasis_markers.pdf'))
 
@@ -227,7 +227,7 @@ plot_genes_by_group(monocle.obj[,monocle.obj$raw_celltype == 'Keratinocytes'],
                     psoriasis_kc_genes,
                     max.size = 3,
                     group_cells_by = 'ct_cluster') + 
-    ggtitle('Keratinocytes Psoriasis Markers')
+  ggtitle('Keratinocytes Psoriasis Markers')
 
 ggsave(file.path(plotsDir, 'KC_Psoriasis_markers.pdf'))
 
@@ -251,7 +251,7 @@ res_fgsea <- setNames(res_fgsea$data,
                             sep = "-"))
 
 res_fgsea <-
-    my_fgsea(res_fgsea, list(datasets))
+  my_fgsea(res_fgsea, list(datasets))
 
 res_fgsea[, c('celltype',
               'organ',
@@ -272,34 +272,34 @@ res_fgsea[, let(
 )]
 
 p1 <- res_fgsea[raw_celltype == 'KCs' & database == 'KCs' & organ == 'Skin'] %>% 
-    ggplot( aes(celltype, pathway)) +
-    geom_point(aes(col = NES, size = pmin(5,-log10(padj)))) +
-    theme_my() +
-    scale_color_gradient2(
-        low = "#005AB5",
-        mid = "#EEEEE0",
-        high = "#DC3220",
-        midpoint = 0
-    ) + ggtitle('Keratinocytes') + 
-    facet_wrap(facets = 'experiment') +
-    xlab('') +
-    ylab('')
+  ggplot( aes(celltype, pathway)) +
+  geom_point(aes(col = NES, size = pmin(5,-log10(padj)))) +
+  theme_my() +
+  scale_color_gradient2(
+    low = "#005AB5",
+    mid = "#EEEEE0",
+    high = "#DC3220",
+    midpoint = 0
+  ) + ggtitle('Keratinocytes') + 
+  facet_wrap(facets = 'experiment') +
+  xlab('') +
+  ylab('')
 
 p2 <- res_fgsea[raw_celltype == 'FBs' & database == 'FBs' & organ == 'Skin'] %>% 
-    ggplot( aes(celltype, pathway)) +
-    geom_point(aes(col = NES, size = pmin(5,-log10(padj))), show.legend = F) +
-    theme_my() +
-    scale_color_gradient2(
-        low = "#005AB5",
-        mid = "#EEEEE0",
-        high = "#DC3220",
-        midpoint = 0
-    ) + ggtitle('Fibroblasts') + 
-    facet_wrap(facets = 'experiment') +
-    ylab('')
+  ggplot( aes(celltype, pathway)) +
+  geom_point(aes(col = NES, size = pmin(5,-log10(padj))), show.legend = F) +
+  theme_my() +
+  scale_color_gradient2(
+    low = "#005AB5",
+    mid = "#EEEEE0",
+    high = "#DC3220",
+    midpoint = 0
+  ) + ggtitle('Fibroblasts') + 
+  facet_wrap(facets = 'experiment') +
+  ylab('')
 
 p1 / p2 + plot_layout(guides = "collect") & 
-    theme(legend.position = 'right')
+  theme(legend.position = 'right')
 
 ggsave(file.path(plotsDir, 'signature_enrichment_hdac1_hdac2.pdf'), width = 7, height = 8)
 
