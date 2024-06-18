@@ -140,7 +140,7 @@ perform_dge <- function(metadata,
       write_fst(out, file.path(
         shinyDir,
         'data',
-        paste0('counts_', filename, '.fst')
+        paste0('5_counts_', filename, '.fst')
       ),
       compress = 0)
     }
@@ -183,10 +183,10 @@ perform_dge <- function(metadata,
 }
 # Load Data ---------------------------------------------------------------
 
-monocle.obj <- read_rds(file.path(dataDir, "3_annotated_monocle.cds"))
-t_subset <- read_rds(file.path(dataDir, '3_t_subset.cds'))
-b_subset <- read_rds(file.path(dataDir, '3_b_subset.cds'))
-m_subset <- read_rds(file.path(dataDir, '3_m_subset.cds'))
+monocle.obj <- read_rds(file.path(dataDir, "4_full_dataset.cds"))
+t_subset <- read_rds(file.path(dataDir, '4_t_subset.cds'))
+b_subset <- read_rds(file.path(dataDir, '4_b_subset.cds'))
+m_subset <- read_rds(file.path(dataDir, '4_m_subset.cds'))
 
 # Full Dataset -------------------------------------------------
 
@@ -204,13 +204,14 @@ if(!is.list(pb_res)){
 
 metax <- make_metadata(monocle.obj, countsx)
 
-write_rds(countsx, file = file.path(dataDir, "counts_pseudobulk.rds"))
-write_rds(metax, file = file.path(shinyDir, "data/design_pseudobulk.rds"))
+#We probably need those in the shiny app
+write_rds(countsx, file = file.path(dataDir, "5_counts_pseudobulk.rds"))
+write_rds(metax, file = file.path(shinyDir, "data/5_design_pseudobulk.rds"))
 
 ## Res -------------------------------------------------------------------
 
-metax <- readRDS(file.path(shinyDir, "data/design_pseudobulk.rds"))
-countsx <- readRDS(file.path(dataDir, "counts_pseudobulk.rds"))
+# metax <- read_rds(file.path(shinyDir, 'data/5_design_pseudobulk.rds'))
+# countsx <- read_rds(file.path(dataDir, '5_counts_pseudobulk.rds'))
 
 res <- perform_dge(metax, 
                    countsx, 

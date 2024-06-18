@@ -275,7 +275,7 @@ monocle.obj$raw_celltype <- case_when(colnames(monocle.obj) %in% colnames(t_subs
 
 plot_cells(monocle.obj, color_cells_by = 'raw_celltype')
 
-monocle.obj$celltype <- case_when(grepl('^removed|Undefined', monocle.obj$raw_celltype) ~ 
+monocle.obj$celltype <- case_when(grepl('^Undefined', monocle.obj$raw_celltype) ~ 
                                       monocle.obj$raw_celltype, 
                                   TRUE ~ monocle.obj$celltype)
 
@@ -283,15 +283,15 @@ monocle.obj$celltype <- case_when(grepl('^removed|Undefined', monocle.obj$raw_ce
 #also for ct_cluster
 monocle.obj$ct_cluster <- assign_ct_cluster(monocle.obj)
 
-# backup for monocle object -----------------------------------------------
+# backup of monocle object -----------------------------------------------
 #because cd45.1 that are in NoT will be removed here.. 
-write_rds(monocle.obj, file.path(vDir, '3_annotated_monocle_backup.cds'))
-write_rds(t_subset, file.path(vDir, '3_t_subset_backup.cds'))
-write_rds(b_subset, file.path(vDir, '3_b_subset_backup.cds'))
-write_rds(m_subset, file.path(vDir, '3_m_subset_backup.cds'))
+write_rds(monocle.obj, file.path(vDir, '3e_full_dataset_backup.cds'))
+write_rds(t_subset, file.path(vDir, '3e_t_subset_backup.cds'))
+write_rds(b_subset, file.path(vDir, '3e_b_subset_backup.cds'))
+write_rds(m_subset, file.path(vDir, '3e_m_subset_backup.cds'))
 
+#removing cd45.1 in NoT samples..
 monocle.obj <- clean_treatment(monocle.obj)
-
 t_subset <- clean_treatment(t_subset)
 
 # Export to AnnData -------------------------------------------------------
@@ -299,8 +299,7 @@ t_subset <- clean_treatment(t_subset)
 export_to_anndata(monocle.obj, 'full')
 # save monocle object ------------------------------------------------
 
-write_rds(monocle.obj, file.path(dataDir, '3_annotated_monocle.cds'))
-write_rds(t_subset, file.path(dataDir, '3_t_subset.cds'))
-write_rds(b_subset, file.path(dataDir, '3_b_subset.cds'))
-write_rds(m_subset, file.path(dataDir, '3_m_subset.cds'))
-
+write_rds(monocle.obj, file.path(dataDir, '4_full_dataset.cds'))
+write_rds(t_subset, file.path(dataDir, '4_t_subset.cds'))
+write_rds(b_subset, file.path(dataDir, '4_b_subset.cds'))
+write_rds(m_subset, file.path(dataDir, '4_m_subset.cds'))
