@@ -58,8 +58,9 @@ dge-app/rsconnect
 /dge-app/design.rds
 /dge-app/cached_data
 #Specific Folders
-/scripts/old
-/renv/pytho
+#adding old scripts to project
+#/scripts/old
+/renv/python
 /scripts/.ipynb_checkpoints
 /scripts/*.ipynb
 

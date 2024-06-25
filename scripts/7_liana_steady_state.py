@@ -11,7 +11,7 @@ from plotnine import ggplot, geom_point, geom_tile, aes, facet_wrap, facet_grid,
 with open('functions/python_directories.py') as f:
     exec(f.read())
     
-adata = sc.read_h5ad(f'{dataDir}/3_full_anndata.h5ad')
+adata = sc.read_h5ad(f'{dataDir}/3e_full_anndata.h5ad')
 adata.strings_to_categoricals()
 adata.obs['treatment.agg'] = adata.obs['treatment.agg'].cat.reorder_categories(['NoT', 'HDAC_WT', 'HDAC_cKO', 'Undefined'])
 
@@ -46,7 +46,7 @@ adata.obsm['X_umap'] = adata.obsm.pop('X_UMAP')
 adata.obsm['X_pca'] = adata.obsm.pop('X_PCA')
 adata.obsm['X_aligned'] = adata.obsm.pop('X_Aligned')
 
-adata.write_h5ad(filename=f'{dataDir}/3_full_anndata.h5ad')
+adata.write_h5ad(filename=f'{dataDir}/7_full_anndata.h5ad')
 # adata = sc.read_h5ad(filename=f'{dataDir}/3_full_anndata.h5ad')
 
 n_inter=adata.uns['consensus_res'].query('specificity_rank<0.05').groupby(['source', 'target', 'treatment', 'organ', 'experiment'], as_index=False, observed=True)['ligand_complex'].agg(count='count')
@@ -58,7 +58,7 @@ p=(ggplot(n_inter)+
    theme_bw()+
    theme(axis_text_x=element_text(rotation = 90)))
 
-p.save(f'{plotsDir}/consensus_n_interactions.pdf', width=15, height = 20)
+p.save(f'{plotsDir}/7_n_significant_interactions.pdf', width=15, height = 20)
 
 a = adata.uns['consensus_res']
 a['interaction'] = a['ligand_complex'] + ' -> ' + a['receptor_complex']

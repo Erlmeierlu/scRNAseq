@@ -10,9 +10,19 @@ import warnings
 warnings.filterwarnings('ignore')
 from collections import defaultdict
 
-adata = sc.read_h5ad(filename=f'{dataDir}/3_full_anndata.h5ad')
+#Directories..
+with open('functions/python_directories.py') as f:
+    exec(f.read())
+    
+adata = sc.read_h5ad(filename=f'{dataDir}/7_full_anndata.h5ad')
 
-sample_key = 'sample_treat'
+#This script follows a liana+ tutorial. Most things are explained there:
+#https://liana-py.readthedocs.io/en/latest/notebooks/liana_c2c.html
+
+#For sample-wise analysis we pass the sample_treat column as the sample 
+#key. The sample treat column is a combination of the sample, and the assigned
+#treatment group. (e.g. fLN_40B2___HDAC_WT)
+sample_key = 'sample_treat.agg'
 condition_key = 'treatment.agg'
 groupby = 'celltype'
 
@@ -41,7 +51,8 @@ tensor = li.multi.to_tensor_c2c(adata,
                                 how='outer_cells' # how to join the samples
                                 )
                                 
-c2c.io.export_variable_with_pickle(tensor, f'{dataDir}/tensor_liana.pkl')
+c2c.io.export_variable_with_pickle(tensor, f'{dataDir}/8_tensor_liana.pkl')
+tensor=c2c.io.load_variable_with_pickle(f'{dataDir}/8_tensor_liana.pkl')
 
 context_dict = adata.obs[[sample_key, condition_key]].drop_duplicates()
 context_dict = dict(zip(context_dict[sample_key], context_dict[condition_key]))

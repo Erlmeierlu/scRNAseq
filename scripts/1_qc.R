@@ -4,6 +4,7 @@ library(monocle3)
 library(Seurat)
 library(data.table)
 library(readr)
+library(gt)
 
 # Directories and Used Functions -----------------------------------------------------------
 source('functions/directories_and_theme.R')
@@ -148,6 +149,23 @@ CountsAB <- read_rds(file.path(dataDir, "0_ab_counts.rds"))
 LUT <- read_rds(file.path(dataDir, "0_doublet_LUT.rds"))
 setDT(LUT)
 
+#same for raw data for the large QC plot at the end.
+#for soupx the data got already filtered. Using them as the raw data
+#reference would remove some information (it changes nothing in the
+#analysis. Every otehr step is still performed with the SoupX corrected
+#data. It's just for the QC table at the end)
+raw_files <- paste0(
+    grep(list.files(rawDir), pattern = "AGG", invert = T, value = T),
+    "/filtered_feature_bc_matrix/"
+)
+raw_files <- grep("fLN_40B3", raw_files, value = T, invert = T)
+
+raw_data <- sapply(raw_files, 
+                   load_data,
+                   path = rawDir, 
+                   slot = "gene expression", 
+                   USE.NAMES = FALSE)
+
 # Assign Metadata ---------------------------------------------------------
 
 #Assigning metadata with function defined above
@@ -172,7 +190,6 @@ data_list <- sapply(seq_along(data_list), function(x, y, i) {
     )
     setNames(list(obj), y[[i]])
 }, x = data_list, y = names(data_list), USE.NAMES = F)
-
 
 #filter dead cells; doublets;...
 data_subset <-
@@ -274,8 +291,153 @@ monocle.obj@colData$experiment <-
 
 
 # QC Table ----------------------------------------------------------------
+#preprocessing for raw data
+#Assigning metadata with function defined above
+raw_data <- mapply(AssignMetadata, raw_data, CountsAB)
 
-#coming soon...
+#Determine %mito genes (important for QC/Identification of viable cells)
+raw_data <- lapply(raw_data, function(x) {
+    x$percent.mt <- PercentageFeatureSet(x, pattern = "^mt-")
+    x
+})
+
+#cell cycle scoring. - self explanatory
+raw_data <- sapply(seq_along(raw_data), function(x, y, i) {
+    obj <- x[[i]]
+    obj$sample <- y[[i]]
+    obj <- NormalizeData(obj, verbose = T)
+    obj <- CellCycleScoring(
+        obj,
+        s.features = str_to_title(cc.genes$s.genes),
+        g2m.features = str_to_title(cc.genes$g2m.genes),
+        set.ident = TRUE
+    )
+    setNames(list(obj), y[[i]])
+}, x = raw_data, y = names(raw_data), USE.NAMES = F)
+#For later use, we extract the meta data of each sample
+#and combine it into one large data table. This is the
+#base of the large QC table produced at the end..
+gt_data_raw <- lapply(raw_data,
+                      function(x) {
+                          getElement(x, name = 'meta.data') %>%
+                              as.data.table(keep.rownames = 'barcode')
+                      }) %>% rbindlist()
+
+gt_data_raw[, experiment := ifelse(grepl('41', sample), 'HDAC2', 'HDAC1')]
+gt_data_raw[, barcode := do.call(paste, args = list(barcode, sample, sep = '_'))]
+gt_data_raw[, singlet := barcode %in% LUT[doublet_classification == 'Singlet', rn]]
+
+gt_data_raw <- gt_data_raw[,
+                           .(experiment,
+                             sample,
+                             nFeature_RNA,
+                             percent.mt,
+                             hash.sum,
+                             hash.ratio,
+                             hash.agg.ratio,
+                             singlet)]
+
+gt_data_raw <- gt_data_raw[,
+                           by = sample,
+                           .(
+                               'Raw' = .N,
+                               'Singlet' = sum(singlet),
+                               'Unique Features' = sum(nFeature_RNA > 200),
+                               'Mitochondrial Genes' = sum(percent.mt < 10),
+                               'Hashtags Bound' = sum(hash.sum > 10),
+                               'Hashtag Ratio' = sum(hash.ratio > 0.6, na.rm = T),
+                               'Combined Hashtag Ratio' = sum(hash.agg.ratio > 0.6, na.rm = T),
+                               'Filtered' = sum(nFeature_RNA > 200 &
+                                                    percent.mt < 10 &
+                                                    hash.sum > 10 &
+                                                    singlet),
+                               'Combined Hashtags' = sum(
+                                   nFeature_RNA > 200 &
+                                       percent.mt < 10 &
+                                       hash.sum > 10 &
+                                       singlet &
+                                       hash.agg.ratio > 0.6
+                               ),
+                               'Individual Hashtags' = sum(
+                                   nFeature_RNA > 200 &
+                                       percent.mt < 10 &
+                                       hash.sum > 10 &
+                                       singlet &
+                                       hash.ratio > 0.6
+                               ),
+                               Experiment = unique(experiment)
+                           )]
+
+gt_table <- gt(gt_data_raw, rowname_col = "sample", groupname_col = "Experiment")
+
+gt_table <-
+    gt_table %>%  tab_header(title = "Filtered Cells") %>%
+    tab_spanner(
+        label = "Cell Counts",
+        columns = c(Raw, Filtered),
+        gather = TRUE
+    ) %>% tab_spanner(
+        label = "Quality Control Criteria",
+        columns = c(
+            "Unique Features",
+            "Mitochondrial Genes",
+            "Hashtags Bound",
+            'Singlet'
+            ),
+        gather = T) %>%
+    tab_spanner(
+        label = "Hashtag Ratios",
+        columns = c(
+            "Hashtag Ratio",
+            "Combined Hashtag Ratio"),
+        gather = T
+    ) %>%
+    tab_spanner(
+        label = 'Assigned & Viable',
+        columns = c(
+            'Combined Hashtags', 
+            'Individual Hashtags'
+        )
+    ) %>% 
+    fmt_number(
+        where(~ is.numeric(.x)),
+        use_seps = T,
+        decimals = 0) %>% 
+    tab_style(style = list(cell_text(weight = "bold")),
+              locations = cells_body(columns = Filtered)) %>%
+    tab_style(style = list(cell_text(weight = "bold", style = "italic")),
+              locations = cells_stub()) %>%
+    tab_style(style = cell_fill(color = "gray90"),
+              locations = list(cells_body(rows = contains(c(
+                  "fSkin", "mSkin"
+              ))),
+              cells_stub(rows = contains(c(
+                  "fSkin", "mSkin"
+              ))))) %>%
+    tab_footnote(footnote = md("Filtered with 'Quality Control Criteria'"),
+                 location = cells_column_labels(columns = Filtered)) %>%
+    tab_footnote(footnote = md("Filtered with 'Quality Control Criteria' & 'Hashtag Ratio'"),
+                 location = cells_column_labels(columns = 'Individual Hashtags')) %>%
+    tab_footnote(footnote = md("Filtered with 'Quality Control Criteria' & 'Combined Hashtag Ratio'"),
+                 location = cells_column_labels(columns = 'Combined Hashtags')) %>%
+    tab_footnote(footnote = md("Cells expressing more than **200 unique genes**"),
+                 location = cells_column_labels(columns = 'Unique Features')) %>%
+    tab_footnote(footnote = md("Cells with less than **10% mitochondrial reads**"),
+                 location = cells_column_labels(columns = 'Mitochondrial Genes')) %>%
+    tab_footnote(footnote = md("Cells with at least **10 hashtag reads**"),
+                 location = cells_column_labels(columns = 'Hashtags Bound')) %>%
+    tab_footnote(footnote = md("Cells with more than **60% reads** of **one hashtag**"),
+                 location = cells_column_labels(columns = 'Hashtag Ratio')) %>%
+    tab_footnote(footnote = md("Cells with more than **60% reads** of hashtags corresponding to a **treatment**"),
+                 location = cells_column_labels(columns = 'Combined Hashtag Ratio')) %>% 
+    tab_options(row_group.as_column = TRUE)
+
+#To save the table we use the gtsave function. This creates a html file in this case.
+#You can open the file and create screenshots, or save it as pdf. You will
+#figure it out. It is also possible to save the table as png or pdf immediately.
+#However, this is not working on the server and needs the 'webshot2' package which
+#is not installed. 
+gt_table %>% gtsave(file.path(plotsDir, "1_qc_table.html"))
 
 # Export Data -------------------------------------------------------------
 

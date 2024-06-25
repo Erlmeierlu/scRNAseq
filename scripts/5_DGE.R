@@ -227,10 +227,10 @@ res[, treatment := .(factor(
   levels = c("WT_vs_ctrl", "KO_vs_ctrl", "KO_vs_WT")
 ))]
 
-write_rds(res, file.path(resDir, "res.rds"))
-fwrite(res, file.path(resDir, 'dge_res.csv'))
+write_rds(res, file.path(resDir, "5_dge_full_dataset.rds"))
+fwrite(res, file.path(resDir, '5_dge_full_dataset.csv'))
 
-res <- read_rds(file.path(resDir, 'res.rds'))
+res <- read_rds(file.path(resDir, '5_dge_full_dataset.rds'))
 res[, ':='(start = fcase(grepl('ctrl', treatment), 'NoT',
                          default = 'WT'),
            end = fcase(grepl('KO', treatment), 'cKO',
@@ -241,6 +241,7 @@ res[,
     keyby = .(celltype, organ, experiment), 
     write_fst(.SD, 
               path = file.path(shinyDir, 'data', paste0(
+                '5_',
                 paste(.BY, collapse = '_'), 
                 '.fst')
               ),
@@ -250,7 +251,7 @@ res[,
 
 list <- res[,.(rn, celltype, organ, experiment, 'direction2' = direction,
                treatment, t)]
-write.fst(list, file.path(shinyDir, 'data', 'list_for_shiny.fst'))
+write.fst(list, file.path(shinyDir, 'data', '5_list_for_shiny.fst'))
 
 design <- res[,
               keyby = .(celltype, organ, experiment),
@@ -260,14 +261,14 @@ design <- res[,
   , AveVal := AveMin
   ]
 
-write_rds(design, file.path(shinyDir, 'data/design.rds'))
+write_rds(design, file.path(shinyDir, 'data/5_design.rds'))
 
 # Organs in HDAC2_WT --------------------------------------------------------------
 
 ## Res -------------------------------------------------------------------
 
-metax <- readRDS(file.path(shinyDir, "data/design_pseudobulk.rds"))
-countsx <- readRDS(file.path(dataDir, "counts_pseudobulk.rds"))
+# metax <- read_rds(file.path(shinyDir, "data/5_design_pseudobulk.rds"))
+# countsx <- read_rds(file.path(dataDir, "5_counts_pseudobulk.rds"))
 
 #wt only skin vs ln in hdac2
 organ_meta <- metax[experiment == 'HDAC2' & treatment == 'HDAC_WT']
@@ -277,9 +278,9 @@ res_organ <- perform_dge(organ_meta,
                          model_term = 'organ')
 
 
-write_rds(res_organ, file.path(resDir, "res_organ.rds"))
+write_rds(res_organ, file.path(resDir, "5_dge_organ.rds"))
 
-res_organ <- read_rds(file.path(resDir, "res_organ.rds"))
+# res_organ <- read_rds(file.path(resDir, "5_dge_organ.rds"))
 
 # CD45.1 Clusters -----------------------------------------------------
 ## Create Subset -----------------------------------------------------------
@@ -292,7 +293,6 @@ pb_sub <- make_pseudobulk(cd45_sub,
                           func = 'sum',
                           return = 'pseudobulk')
 
-
 if(!is.list(pb_res)){
   countsx_sub <- pb_sub
 }else{
@@ -302,7 +302,6 @@ if(!is.list(pb_res)){
 meta_sub <- make_metadata(cd45_sub, countsx_sub)
 
 ## Res -------------------------------------------------------------------
-
 res_sub <- perform_dge(meta_sub, countsx_sub, model_term = 'celltype')
-write_rds(res_sub, file.path(resDir, "res_cd45.rds"))
+write_rds(res_sub, file.path(resDir, "5_dge_cd45.rds"))
 

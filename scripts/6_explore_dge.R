@@ -40,41 +40,65 @@ my_fgsea <- function(stats, pathways) {
 }
 
 # Load Data ------------------------------------------------------------
-monocle.obj <- read_rds(file.path(dataDir, "3_annotated_monocle.cds"))
-t_subset <- read_rds(file.path(dataDir, '3_t_subset.cds'))
-b_subset <- read_rds(file.path(dataDir, '3_b_subset.cds'))
-m_subset <- read_rds(file.path(dataDir, '3_m_subset.cds'))
+monocle.obj <- read_rds(file.path(dataDir, "4_full_dataset.cds"))
+t_subset <- read_rds(file.path(dataDir, '4_t_subset.cds'))
+b_subset <- read_rds(file.path(dataDir, '4_b_subset.cds'))
+m_subset <- read_rds(file.path(dataDir, '4_m_subset.cds'))
 
 #DGE results
-res <- read_rds(file.path(resDir, "res.rds"))
+res <- read_rds(file.path(resDir, "5_dge_full_dataset.rds"))
 setDT(res)
 
 #psoriasis data
-psoriasis_ref <- fread(file.path(tablesDir, 'new_ludwig_stats_my.csv'))[,-1]
+#this reference dataset comes from Teichmann Group
+#https://doi.org/10.1126/science.aba6500
+#Gary Reynolds wrote a script to generate the data
+psoriasis_ref <- fread(file.path(tablesDir, '6_new_ludwig_stats_my.csv'))[,-1]
+
+#This is a reference collected by us I think
 psoriasis_markers <- readxl::read_xlsx(file.path(tablesDir, 
-                                                 'MarkerGenes_Psoriasis_ML.xlsx'))
+                                                 '6_MarkerGenes_Psoriasis_ML.xlsx'))
 
 #enrichment psoriasis datasets
-files <- list.files(tablesDir, pattern = '^GeneSet')
+files <- list.files(tablesDir, pattern = '^6_GeneSet')
 
 datasets <- sapply(files, function(x) {
   fread(file.path(tablesDir, x), header = FALSE)
 })
 
 # Percent Celltype with DGEs--------------------------------------------------------
+
+
 ## HDAC2 WT vs NoT ------------------------------------------------------------
 
+#You can define what you want to include here.
+#Take a look at unique(pc_dat$experiment), unique(pc_dat$treatment.agg),
+#unique(pc_dat$organ), etc.. for an overview what possible combinations are
+
+#Here we focus on HDAC2 WT vs NoT:
+
+expx <- 'HDAC2'
+treat <- c('NoT', 'HDAC_WT') #if you want all treatment groups please specify all c('NoT', 'HDAC_WT', 'HDAC_cKO')
+org <- c('LN', 'Skin')
+
+#some calculations for celltype %ages
 pc_dat <- count_groups(monocle.obj, group_col = 'celltype')
 pc_dat <- expand_groups(pc_dat, group_col = 'celltype')
 pc_dat <- calculate_percentages(pc_dat, group_col = 'celltype')
 
-pc_dat <- pc_dat[experiment == 'HDAC2' & treatment.agg != 'HDAC_cKO']
+#Here the filtering happens based on the above defined subsets
+pc_dat <- pc_dat[experiment %in% expx & 
+                   treatment.agg %in% treat & 
+                   organ %in% org]
 
 stats <- calculate_statistics(pc_dat, group_by = c('celltype',
                                                    'organ',
                                                    'experiment'))
 
 stats_sig <- stats[label != 'NS']
+
+#Significant changes in cell count in T_gd_4 LN HDAC2 (but only sig in <0.1)
+stats_sig
 
 p1 <- plot_percent(pc_dat, group_by = 'celltype') + 
   theme(axis.title.x = element_blank(),
@@ -100,13 +124,16 @@ setnafill(res_percent, fill = 0, cols = 'V1')
 res_percent[,
             celltype := forcats::fct_inorder(celltype)]
 
+#We filter out removed/unassigned cell types from the analysis
 res_percent <- res_percent[!grepl('^Un|remo', celltype)
 ][
   celltype %in% pc_dat$celltype
 ][
-  experiment == 'HDAC2'
-][
-  coef == 'HDAC_WT_vs_NoT']
+  experiment == expx
+][#this part is a little bit weird, but if you look at the coef column you might understand why.
+  grepl(treat[1], coef) & grepl(treat[2], coef) & ifelse(length(treat) > 2, #if we want to look at all 3 treatments this weird code is needed
+                                                         grepl(treat[3], coef),
+                                                         TRUE)]
 
 p2 <- res_percent %>% 
   ggplot(aes(x = celltype, y = V1), drop = F) +
@@ -123,15 +150,22 @@ p2 <- res_percent %>%
   xlab("Celltype") +
   ylab("n DEGs")  
 
+#This is done with the package patchwork. It allwos you to define the layout
+#how to plout multiple plots together as one
 (p1 / p2) +
   plot_layout(guides = "collect",
               heights = c(10, 3)) & 
   theme(legend.position = 'right')
 
-ggsave(file.path(plotsDir, 'perc_ct_dge_HDAC2_WT_NoT.pdf'), height = 5, width = 12, scale = 3)
+ggsave(file.path(plotsDir, paste0('6_percent_celltype_with_n_deg', '_',
+                                 paste(treat, collapse = '_'), '_',
+                                 paste(org, collapse = '_'), '_',
+                                 paste(expx, collapse = '_'), '.pdf')),
+                 height = 5, width = 12, scale = 3
+)
 
 # Cor HDAC1 HDAC2 ---------------------------------------------------------
-
+#correlation of hdac1 wt vs hdac2 wt
 cors <- res[treatment == "WT_vs_ctrl",
             .(celltype, organ, experiment, treatment, logFC, t, rn)
 ][,
@@ -152,8 +186,11 @@ cors[,
   theme_my() +
   ggtitle("HDAC1/2 WT Concordance Correlation Coefficient")
 
-ggsave(file.path(plotsDir, "cor_hdacs_wt.pdf"))
+ggsave(file.path(plotsDir, "6_Correlation_HDAC1_HDAC2.pdf"))
 
+#concordance correlation coefficient(ccc) is similar to pearson correlation
+#an explanation can be found here: 
+#https://www.r-bloggers.com/2020/01/concordance-correlation-coefficient/
 c <- ccc(cors$logFC_HDAC1, cors$logFC_HDAC2) %>% round(2)
 
 maxi <- max(cors$logFC_HDAC1, cors$logFC_HDAC2, na.rm = T)
@@ -191,9 +228,9 @@ ggplot(cors,
        x = expression(paste(log[2], '(FC) HDAC1-WT')),
        y = expression(paste(log[2], '(FC) HDAC2-WT')))
 
-ggsave(file.path(plotsDir, "hdac_wt_ccc.jpg"))
+ggsave(file.path(plotsDir, "6_CCC_HDAC1_HDAC2.jpg"))
 # Comparison to Psoriasis Data --------------------------------------------
-
+#here we use the psoriasis reference data from gary (mentioned above)
 psoriasis_ref <- psoriasis_ref[, melt(.SD, 
                                       id = 'cluster', 
                                       measure(
@@ -221,7 +258,7 @@ plot_genes_by_group(monocle.obj[,monocle.obj$raw_celltype == 'Fibroblasts'],
                     group_cells_by = 'ct_cluster') + 
   ggtitle('Fibroblasts Psoriasis Markers')
 
-ggsave(file.path(plotsDir, 'FB_Psoriasis_markers.pdf'))
+ggsave(file.path(plotsDir, '6_FB_psoriasis_marker_expression.pdf'))
 
 plot_genes_by_group(monocle.obj[,monocle.obj$raw_celltype == 'Keratinocytes'],
                     psoriasis_kc_genes,
@@ -229,9 +266,10 @@ plot_genes_by_group(monocle.obj[,monocle.obj$raw_celltype == 'Keratinocytes'],
                     group_cells_by = 'ct_cluster') + 
   ggtitle('Keratinocytes Psoriasis Markers')
 
-ggsave(file.path(plotsDir, 'KC_Psoriasis_markers.pdf'))
+ggsave(file.path(plotsDir, '6_KC_psoriasis_marker_expression.pdf'))
 
 ## Enrichment of models ----------------------------------------------------
+#This is the comparison to the gene sets
 #convert symbols to mouse symbols by custom function
 datasets <- lapply(datasets, convert_gene_list)
 names(datasets) <- str_remove_all(names(datasets), '^GeneSet|.txt.V1$')
@@ -301,7 +339,7 @@ p2 <- res_fgsea[raw_celltype == 'FBs' & database == 'FBs' & organ == 'Skin'] %>%
 p1 / p2 + plot_layout(guides = "collect") & 
   theme(legend.position = 'right')
 
-ggsave(file.path(plotsDir, 'signature_enrichment_hdac1_hdac2.pdf'), width = 7, height = 8)
+ggsave(file.path(plotsDir, '6_psoriasis_signature_enrichment_hdac1_hdac2.pdf'), width = 7, height = 8)
 
 
 # DISCONTINUED ------------------------------------------------------------

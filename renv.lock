@@ -2261,6 +2261,37 @@
       ],
       "Hash": "195f3206842ea5ae11968e8d462bb828"
     },
+    "gt": {
+      "Package": "gt",
+      "Version": "0.7.0",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteUsername": "rstudio",
+      "RemoteRepo": "gt",
+      "RemoteRef": "v0.7.0",
+      "RemoteSha": "902c9e9dfc660ff6b78e61ccc34264b4482d4f19",
+      "Requirements": [
+        "R",
+        "base64enc",
+        "bitops",
+        "cli",
+        "commonmark",
+        "dplyr",
+        "fs",
+        "ggplot2",
+        "glue",
+        "htmltools",
+        "magrittr",
+        "rlang",
+        "sass",
+        "scales",
+        "stringr",
+        "tibble",
+        "tidyselect"
+      ],
+      "Hash": "d8e47faa6eb5ec07e038bbb84be1328d"
+    },
     "gtable": {
       "Package": "gtable",
       "Version": "0.3.0",
