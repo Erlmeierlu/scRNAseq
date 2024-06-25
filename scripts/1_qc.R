@@ -432,6 +432,9 @@ gt_table <-
                  location = cells_column_labels(columns = 'Combined Hashtag Ratio')) %>% 
     tab_options(row_group.as_column = TRUE)
 
+#View the table
+gt_table
+
 #To save the table we use the gtsave function. This creates a html file in this case.
 #You can open the file and create screenshots, or save it as pdf. You will
 #figure it out. It is also possible to save the table as png or pdf immediately.

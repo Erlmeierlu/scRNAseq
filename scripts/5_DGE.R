@@ -237,6 +237,7 @@ res[, ':='(start = fcase(grepl('ctrl', treatment), 'NoT',
                        default = 'WT'))]
 
 cols <- c('coef', 't', 'B', 'direction')
+# filename <- paste(lapply(by, as.character), collapse = '_')
 res[, 
     keyby = .(celltype, organ, experiment), 
     write_fst(.SD, 

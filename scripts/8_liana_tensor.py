@@ -26,10 +26,13 @@ sample_key = 'sample_treat.agg'
 condition_key = 'treatment.agg'
 groupby = 'celltype'
 
+#here we need to remove some sample_treatment combination with less than 3 occurences
+#Otherwise the analysis would fail..
 samples_used = adata.obs[adata.obs[sample_key].map(adata.obs[sample_key].value_counts()) > 2][sample_key].cat.remove_unused_categories().unique()
 
 adata = adata[adata.obs[sample_key].isin(samples_used)].copy()
 
+#this will run for a long time
 li.mt.rank_aggregate.by_sample(
     adata,
     groupby=groupby,
@@ -50,7 +53,8 @@ tensor = li.multi.to_tensor_c2c(adata,
                                 score_key='magnitude_rank', # can be any score from liana
                                 how='outer_cells' # how to join the samples
                                 )
-                                
+
+#Exporting Tensor & Loading it
 c2c.io.export_variable_with_pickle(tensor, f'{dataDir}/8_tensor_liana.pkl')
 tensor=c2c.io.load_variable_with_pickle(f'{dataDir}/8_tensor_liana.pkl')
 
@@ -63,6 +67,7 @@ tensor_meta = c2c.tensor.generate_tensor_metadata(interaction_tensor=tensor,
                                                   fill_with_order_elements=True
                                                   )
 
+#This will also run for some time!
 tensor = c2c.analysis.run_tensor_cell2cell_pipeline(tensor,
                                                     tensor_meta,
                                                     copy_tensor=True, # Whether to output a new tensor or modifying the original
@@ -92,6 +97,8 @@ factors, axes = c2c.plotting.tensor_factors_plot(interaction_tensor=tensor,
 factors = tensor.factors
 factors.keys()
 
+#From this plot we can determine which factors we want to look at in detail. 
+#look at the liana+ tutorial what they did..
 _ = c2c.plotting.context_boxplot(context_loadings=factors['Contexts'],
                                  metadict=context_dict,
                                  nrows=2,
@@ -101,7 +108,8 @@ _ = c2c.plotting.context_boxplot(context_loadings=factors['Contexts'],
                                  cmap='plasma',
                                  verbose=False,
                                 )
-                                
+
+#Here, also factor 6 was imortant.. Closer look..            
 c2c.plotting.ccc_networks_plot(factors,
                                included_factors=['Factor 6'],
                                network_layout='circular',

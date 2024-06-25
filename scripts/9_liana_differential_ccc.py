@@ -14,7 +14,7 @@ from plotnine import *
 
 adata = sc.read_h5ad(filename=f'{dataDir}/3_full_anndata.h5ad')
 
-dge_res=pd.read_csv(f'{resDir}/dge_res.csv')
+dge_res=pd.read_csv(f'{resDir}/5_dge_full_dataset.csv')
 dge_res['coef'] = pd.Categorical(dge_res.coef)
 
 comparisons = dge_res['coef'].unique()[::-1]
@@ -48,8 +48,8 @@ lr_res = lr_res.rename({'level_0':'analysis'}, axis=1)
 lr_res[['comparison', 'organ', 'experiment']] = lr_res['analysis'].str.split('-', expand = True)
 lr_res[['contrast', 'intercept']] = lr_res['comparison'].str.split('_vs_', expand = True)
 
-lr_res.to_csv(f'{resDir}/liana_res_dge.csv', index=False)
-lr_res = pd.read_csv(f'{resDir}/liana_res_dge.csv')
+lr_res.to_csv(f'{resDir}/9_liana_differntial_interactions.csv', index=False)
+lr_res = pd.read_csv(f'{resDir}/9_liana_differntial_interactions.csv')
 
 lr_res = lr_res.sort_values(['interaction_t_stat', 'analysis'], ascending=[False,True])
 
@@ -98,7 +98,7 @@ p=(ggplot(t_n_inter)+
    theme_bw()+
    theme(axis_text_x=element_text(rotation = 90)))
 
-p.save(f'{plotsDir}/n_dge_interactions_HDAC_cKO.pdf', width=10, height = 10)
+p.save(f'{plotsDir}/9_n_dge_interactions_HDAC_cKO.pdf', width=10, height = 10)
 
 ligand_producing_cells=['T_CD45.1_2', 'T_gd_3', 'Keratinocytes_4', 'Fibroblasts_2']
 receptor_producing_cells=['T_CD45.1_3', 'Fibroblasts_2', 'T_gd_3', 'Keratinocytes_3']

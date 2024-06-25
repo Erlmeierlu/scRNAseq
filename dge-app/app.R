@@ -322,7 +322,7 @@ plot_fgsea <- function(df) {
 dataDir <- ('data')
 
 #load data
-design.res <- read_rds(file.path(dataDir, 'design.rds'))
+design.res <- read_rds(file.path(dataDir, '5_design.rds'))
 setDT(design.res)
 
 # UI Section --------------------------------------------------------------
@@ -630,6 +630,7 @@ server <- function(input, output, session) {
         tryCatch(
             res.pb <- read.fst(file.path(dataDir,
                                          paste0(
+                                             '5_',
                                              input$celltype,
                                              "_",
                                              input$organ,
@@ -667,7 +668,7 @@ server <- function(input, output, session) {
     
     designx <- reactive({
         read_rds(file.path(dataDir, 
-                           "design_pseudobulk.rds")
+                           "5_design_pseudobulk.rds")
                  )[celltype == input$celltype &
                        organ == input$organ &
                        experiment == input$experiment]
@@ -679,6 +680,7 @@ server <- function(input, output, session) {
         read_fst(file.path(
             dataDir,
             paste0(
+                '5_',
                 "counts_",
                 input$celltype,
                 "_",
@@ -1068,7 +1070,7 @@ server <- function(input, output, session) {
             )
             
             res <- read.fst(file.path(dataDir,
-                                      "list_for_shiny.fst"),
+                                      "5_list_for_shiny.fst"),
                             as.data.table = TRUE)[direction2 == "up" &
                                                       celltype %in% input$ct_enr &
                                                       organ %in% input$organ_enr &
@@ -1125,7 +1127,7 @@ server <- function(input, output, session) {
                 sapply(input$databases, cacheGenesets)
             
             res <- read.fst(file.path(dataDir,
-                                      "list_for_shiny.fst"),
+                                      "5_list_for_shiny.fst"),
                             as.data.table = TRUE)[celltype %in% input$ct_enr &
                                                       organ %in% input$organ_enr &
                                                       experiment %in% input$exp_enr]
